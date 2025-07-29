@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Disable gradient utilities to remove tie-dye effects */
+@layer utilities {
+  .bg-gradient-to-r, .bg-gradient-to-l, .bg-gradient-to-b, .bg-gradient-to-t, .bg-gradient-to-br, .bg-gradient-to-bl, .bg-gradient-to-tr, .bg-gradient-to-tl {
+    background-image: none !important;
+    background-color: #f8f8f8 !important; /* light background to replace removed gradient */
+  }
+
+  /* Headings that relied on gradient text */
+  .bg-clip-text.text-transparent {
+    color: #111827 !important; /* gray-900 */
+    background: none !important;
+  }
+
+  /* Buttons that had gradient background and white text */
+  .bg-gradient-to-r.text-white,
+  .bg-gradient-to-l.text-white,
+  .bg-gradient-to-b.text-white,
+  .bg-gradient-to-br.text-white {
+    background-color: #111827 !important; /* dark background */
+  }
+} 
