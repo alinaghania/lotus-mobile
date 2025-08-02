@@ -90,6 +90,28 @@ export const trackingStyles = StyleSheet.create({
     color: '#6b7280',
     fontWeight: '500',
   },
+  // Success Message Styles (100% completion)
+  successMessage: {
+    backgroundColor: '#f0fdf4', // Light green background
+    borderRadius: 12,
+    padding: 16,
+    marginVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  successText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#059669', // Emerald green
+    marginBottom: 4,
+  },
+  successSubtext: {
+    fontSize: 14,
+    color: '#047857',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
   progressValue: {
     fontSize: 14,
     fontWeight: '600',

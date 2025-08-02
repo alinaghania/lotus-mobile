@@ -114,7 +114,13 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
               sleepDuration: record.sleep.sleepDuration || 0
             });
           } else {
-            console.log('😴 TRACKING: No sleep data found');
+            console.log('😴 TRACKING: No sleep data found - resetting');
+            setSleepData({
+              bedTime: '',
+              wakeTime: '',
+              sleepQuality: 0,
+              sleepDuration: 0
+            });
           }
 
           // Load meal data
@@ -129,7 +135,15 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
               drinkQuantities: record.meals.drinkQuantities || {}
             });
           } else {
-            console.log('🍽️ TRACKING: No meal data found');
+            console.log('🍽️ TRACKING: No meal data found - resetting');
+            setMealData({
+              morning: '',
+              afternoon: '',
+              evening: '',
+              snack: '',
+              drinkType: '',
+              drinkQuantities: {}
+            });
           }
 
           // Load symptoms
@@ -137,7 +151,8 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
             console.log('🩺 TRACKING: Loading symptoms:', record.symptoms);
             setSelectedSymptoms(record.symptoms);
           } else {
-            console.log('🩺 TRACKING: No symptoms found');
+            console.log('🩺 TRACKING: No symptoms found - resetting');
+            setSelectedSymptoms([]);
           }
 
           // Load sports
@@ -145,7 +160,8 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
             console.log('💪 TRACKING: Loading activity:', record.activity);
             setSelectedSports(record.activity);
           } else {
-            console.log('💪 TRACKING: No activity found');
+            console.log('💪 TRACKING: No activity found - resetting');
+            setSelectedSports([]);
           }
 
           // Load cycle data
@@ -153,10 +169,29 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
             console.log('🌸 TRACKING: Loading period:', record.period);
             setHasPeriod(record.period.active ? 'yes' : 'no');
           } else {
-            console.log('🌸 TRACKING: No period data found');
+            console.log('🌸 TRACKING: No period data found - resetting');
+            setHasPeriod('');
           }
         } else {
-          console.log('❌ TRACKING: No record found for this date');
+          console.log('❌ TRACKING: No record found for this date - resetting all states');
+          // Reset all states when no record exists for this date
+          setSleepData({
+            bedTime: '',
+            wakeTime: '',
+            sleepQuality: 0,
+            sleepDuration: 0
+          });
+          setMealData({
+            morning: '',
+            afternoon: '',
+            evening: '',
+            snack: '',
+            drinkType: '',
+            drinkQuantities: {}
+          });
+          setSelectedSymptoms([]);
+          setSelectedSports([]);
+          setHasPeriod('');
         }
       } catch (error) {
         console.error('❌ TRACKING: Error loading saved data:', error);
@@ -184,6 +219,13 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
               sleepQuality: record.sleep.sleepQuality || 0,
               sleepDuration: record.sleep.sleepDuration || 0
             });
+          } else {
+            setSleepData({
+              bedTime: '',
+              wakeTime: '',
+              sleepQuality: 0,
+              sleepDuration: 0
+            });
           }
 
           if (record.meals) {
@@ -195,19 +237,53 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
               drinkType: record.meals.drinkType || '',
               drinkQuantities: record.meals.drinkQuantities || {}
             });
+          } else {
+            setMealData({
+              morning: '',
+              afternoon: '',
+              evening: '',
+              snack: '',
+              drinkType: '',
+              drinkQuantities: {}
+            });
           }
 
           if (record.symptoms) {
             setSelectedSymptoms(record.symptoms);
+          } else {
+            setSelectedSymptoms([]);
           }
 
           if (record.activity) {
             setSelectedSports(record.activity);
+          } else {
+            setSelectedSports([]);
           }
 
           if (record.period) {
             setHasPeriod(record.period.active ? 'yes' : 'no');
+          } else {
+            setHasPeriod('');
           }
+        } else {
+          // Reset all states when no record exists for this date
+          setSleepData({
+            bedTime: '',
+            wakeTime: '',
+            sleepQuality: 0,
+            sleepDuration: 0
+          });
+          setMealData({
+            morning: '',
+            afternoon: '',
+            evening: '',
+            snack: '',
+            drinkType: '',
+            drinkQuantities: {}
+          });
+          setSelectedSymptoms([]);
+          setSelectedSports([]);
+          setHasPeriod('');
         }
       } catch (error) {
         console.error('Error loading saved data on focus:', error);
@@ -388,6 +464,14 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
               ]}
             />
           </View>
+
+          {/* 100% Completion Message */}
+          {totalProgress === 100 && (
+            <View style={trackingStyles.successMessage}>
+              <Text style={trackingStyles.successText}>🎉 Congratulations!</Text>
+              <Text style={trackingStyles.successSubtext}>You've completed all your daily health tracking!</Text>
+            </View>
+          )}
 
           {/* Simple Activities Checklist */}
           <View style={trackingStyles.progressBreakdown}>
