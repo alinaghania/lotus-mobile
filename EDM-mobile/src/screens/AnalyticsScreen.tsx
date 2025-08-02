@@ -1,9 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
+import { useDate } from '../contexts/DateContext';
 import { trackingService } from '../services/trackingService';
 import { analyticsService } from '../services/analyticsService';
+import { DailyRecord, TrackingProgress } from '../types/tracking';
 import { analyticsStyles } from '../styles/analyticsStyles';
 
 const SYMPTOMS = [
@@ -16,16 +18,111 @@ type FilterType = 'Last 3 Days' | 'Last Week' | 'Last Month' | 'Custom';
 
 export default function AnalyticsScreen() {
   const { user } = useAuth();
+  const { selectedDate } = useDate();
   const [selectedFilter, setSelectedFilter] = useState<FilterType>('Last Week');
   const [selectedSymptom, setSelectedSymptom] = useState('Headache');
+  const [dailyRecord, setDailyRecord] = useState<DailyRecord | null>(null);
+  const [trackingProgress, setTrackingProgress] = useState<TrackingProgress>({
+    meals: 0,
+    symptoms: 0,
+    digestive: 0,
+    optional: {
+      sleep: 0,
+      sport: 0,
+      cycle: 0,
+      drinks: 0,
+      snacks: 0
+    }
+  });
 
-  // Sample KPI data - replace with real data later
-  const kpis = useMemo(() => ({
-    avgSleep: 7.5,
-    avgSportMin: 45,
-    avgSymptoms: 2.3,
-    dataCompleteness: 85
-  }), []);
+  // Calculate tracking progress from data (20% per tab) - SAME AS HOME
+  const calculateTrackingProgress = (record: DailyRecord | null): TrackingProgress => {
+    console.log('📊 ANALYTICS: Calculating progress for record:', record);
+    
+    const progress: TrackingProgress = {
+      meals: 0,
+      symptoms: 0,
+      digestive: 0,
+      optional: {
+        sport: 0,
+        cycle: 0,
+        drinks: 0,
+        snacks: 0,
+        sleep: 0
+      }
+    };
+
+    if (!record) {
+      console.log('📊 ANALYTICS: No record, returning 0% progress');
+      return progress;
+    }
+
+    // Sleep (20%)
+    const hasSleepData = record.sleep && (record.sleep.bedTime || record.sleep.wakeTime);
+    progress.optional.sleep = hasSleepData ? 20 : 0;
+    console.log('😴 ANALYTICS: Sleep progress:', progress.optional.sleep);
+
+    // Meals (20%)
+    if (record.meals) {
+      const hasMeals = record.meals.morning || record.meals.afternoon || record.meals.evening;
+      progress.meals = hasMeals ? 20 : 0;
+      console.log('🍽️ ANALYTICS: Meals progress:', progress.meals);
+    }
+
+    // Sport (20%)
+    progress.optional.sport = (record.activity && record.activity.length > 0) ? 20 : 0;
+    console.log('💪 ANALYTICS: Sport progress:', progress.optional.sport);
+
+    // Cycle (20%)
+    progress.optional.cycle = record.period ? 20 : 0;
+    console.log('🌸 ANALYTICS: Cycle progress:', progress.optional.cycle);
+
+    // Symptoms (20%)
+    progress.symptoms = (record.symptoms && record.symptoms.length > 0) ? 20 : 0;
+    console.log('🩺 ANALYTICS: Symptoms progress:', progress.symptoms);
+
+    const totalProgress = progress.meals + progress.symptoms + progress.optional.sleep + progress.optional.sport + progress.optional.cycle;
+    console.log('📊 ANALYTICS: Total calculated progress:', totalProgress, '%');
+
+    return progress;
+  };
+
+  // Load data when component mounts or date changes
+  useEffect(() => {
+    const loadData = async () => {
+      if (user) {
+        try {
+          const date = selectedDate.toISOString().split('T')[0];
+          console.log('📊 ANALYTICS: Loading data for date:', date);
+          const record = await trackingService.getTrackingByDate(user.id, date);
+          console.log('📦 ANALYTICS: Loaded record:', record);
+          setDailyRecord(record);
+          
+          const progress = calculateTrackingProgress(record);
+          setTrackingProgress(progress);
+        } catch (error) {
+          console.error('❌ ANALYTICS: Error loading tracking data:', error);
+        }
+      }
+    };
+    
+    loadData();
+  }, [user, selectedDate]);
+
+  // Calculate real KPIs based on tracking data
+  const realKpis = useMemo(() => {
+    const totalProgress = trackingProgress.meals + trackingProgress.symptoms + 
+      trackingProgress.optional.sleep + trackingProgress.optional.sport + trackingProgress.optional.cycle;
+    
+    return {
+      sleepProgress: trackingProgress.optional.sleep,
+      mealsProgress: trackingProgress.meals,
+      sportProgress: trackingProgress.optional.sport,
+      symptomsProgress: trackingProgress.symptoms,
+      totalProgress: totalProgress,
+      dataCompleteness: totalProgress
+    };
+  }, [trackingProgress]);
 
   // Sample symptom trend data - filtered by selectedFilter
   const symptomTrend = useMemo(() => {
@@ -152,10 +249,10 @@ export default function AnalyticsScreen() {
           <Text style={analyticsStyles.sectionTitle}>Overview</Text>
           <View style={analyticsStyles.kpiContainer}>
             {[
-              { label: 'Avg Sleep (h)', value: kpis.avgSleep.toFixed(1), style: analyticsStyles.kpiCardSleep },
-              { label: 'Data Quality (%)', value: kpis.dataCompleteness.toString(), style: analyticsStyles.kpiCardQuality },
-              { label: 'Avg Sport (min)', value: kpis.avgSportMin.toFixed(0), style: analyticsStyles.kpiCardSport },
-              { label: 'Avg Symptoms/day', value: kpis.avgSymptoms.toFixed(1), style: analyticsStyles.kpiCardSymptoms }
+              { label: 'Avg Sleep (h)', value: realKpis.sleepProgress.toFixed(1), style: analyticsStyles.kpiCardSleep },
+              { label: 'Data Quality (%)', value: realKpis.dataCompleteness.toString(), style: analyticsStyles.kpiCardQuality },
+              { label: 'Avg Sport (min)', value: realKpis.sportProgress.toFixed(0), style: analyticsStyles.kpiCardSport },
+              { label: 'Avg Symptoms/day', value: realKpis.symptomsProgress.toFixed(1), style: analyticsStyles.kpiCardSymptoms }
             ].map((card, idx) => (
               <View key={card.label} style={[analyticsStyles.kpiCard, card.style]}>
                 <Text style={analyticsStyles.kpiLabel}>{card.label}</Text>

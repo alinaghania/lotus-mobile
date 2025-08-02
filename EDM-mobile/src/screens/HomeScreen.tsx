@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
+import { useDate } from '../contexts/DateContext';
 import { trackingService } from '../services/trackingService';
 import { Character } from '../types/character';
 import { TrackingProgress, DailyRecord, MealData } from '../types/tracking';
@@ -52,7 +53,6 @@ const loadSavedCharacter = async (): Promise<Character> => {
     hair: 'long',
     hairColor: '#8B4513',
     eyebrowColor: '#8B4513',
-    eyebrows: 'natural',
     eyes: 'happy',
     mouth: 'smile',
     outfit: 'tshirt',
@@ -71,6 +71,7 @@ const loadSavedCharacter = async (): Promise<Character> => {
 export default function HomeScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
+  const { selectedDate, setSelectedDate, refreshTrigger } = useDate();
   const [character, setCharacter] = useState<Character>({
     skin: '#F1C3A7',
     hair: 'long',
@@ -85,7 +86,6 @@ export default function HomeScreen() {
     healthPoints: 100
   });
   const [streak, setStreak] = useState(0);
-  const [selectedDate, setSelectedDate] = useState(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [dailyRecord, setDailyRecord] = useState<DailyRecord | null>(null);
@@ -94,6 +94,7 @@ export default function HomeScreen() {
     symptoms: 0,
     digestive: 0,
     optional: {
+      sleep: 0,
       sport: 0,
       cycle: 0,
       drinks: 0,
@@ -101,8 +102,10 @@ export default function HomeScreen() {
     }
   });
 
-  // Calculate tracking progress from data
+  // Calculate tracking progress from data (20% per tab)
   const calculateTrackingProgress = (record: DailyRecord | null): TrackingProgress => {
+    console.log('🧮 HOME: Calculating progress for record:', record);
+    
     const progress: TrackingProgress = {
       meals: 0,
       symptoms: 0,
@@ -111,71 +114,85 @@ export default function HomeScreen() {
         sport: 0,
         cycle: 0,
         drinks: 0,
-        snacks: 0
+        snacks: 0,
+        sleep: 0
       }
     };
 
-    if (!record) return progress;
-
-    // Required meals (20% each = 60% total)
-    if (record.meals) {
-      const requiredMeals = ['morning', 'afternoon', 'evening'];
-      const completedMeals = requiredMeals.filter(meal => {
-        const value = record.meals![meal as keyof MealData] as string;
-        return value && (value === 'Fasting' || value.trim() !== '');
-      });
-      progress.meals = (completedMeals.length / requiredMeals.length) * 60;
+    if (!record) {
+      console.log('🧮 HOME: No record, returning 0% progress');
+      return progress;
     }
+
+    // Sleep (20%)
+    const hasSleepData = record.sleep && (record.sleep.bedTime || record.sleep.wakeTime);
+    progress.optional.sleep = hasSleepData ? 20 : 0;
+    console.log('😴 HOME: Sleep progress:', progress.optional.sleep, '(has data:', !!hasSleepData, ')');
+
+    // Meals (20%)
+    if (record.meals) {
+      const hasMeals = record.meals.morning || record.meals.afternoon || record.meals.evening;
+      progress.meals = hasMeals ? 20 : 0;
+      console.log('🍽️ HOME: Meals progress:', progress.meals, '(has data:', !!hasMeals, ')');
+    } else {
+      console.log('🍽️ HOME: No meals data');
+    }
+
+    // Sport (20%)
+    progress.optional.sport = (record.activity && record.activity.length > 0) ? 20 : 0;
+    console.log('💪 HOME: Sport progress:', progress.optional.sport, '(activity:', record.activity, ')');
+
+    // Cycle (20%)
+    progress.optional.cycle = record.period ? 20 : 0;
+    console.log('🌸 HOME: Cycle progress:', progress.optional.cycle, '(period:', record.period, ')');
 
     // Symptoms (20%)
     progress.symptoms = (record.symptoms && record.symptoms.length > 0) ? 20 : 0;
+    console.log('🩺 HOME: Symptoms progress:', progress.symptoms, '(symptoms:', record.symptoms, ')');
 
-    // Digestive photos (20%)
-    if (record.digestive?.photos) {
-      const photos = record.digestive.photos;
-      const photoCount = (photos.morning ? 1 : 0) + (photos.evening ? 1 : 0);
-      progress.digestive = (photoCount / 2) * 20;
-    }
-
-    // Optional items
-    progress.optional.sport = record.activity ? 100 : 0;
-    progress.optional.cycle = record.period ? 100 : 0;
-    progress.optional.drinks = (record.hydration && record.hydration.count > 0) ? 100 : 0;
-    progress.optional.snacks = (record.meals?.snack && record.meals.snack.trim() !== '') ? 100 : 0;
+    const totalProgress = progress.meals + progress.symptoms + progress.optional.sleep + progress.optional.sport + progress.optional.cycle;
+    console.log('📊 HOME: Total calculated progress:', totalProgress, '%');
 
     return progress;
   };
 
-  // Generate tasks based on tracking progress
+  // Generate tasks based on tracking progress (20% per tab)
   const generateTasksFromProgress = (progress: TrackingProgress): Task[] => {
     return [
       {
         id: '1',
-        text: 'Complete required meals (Morning, Afternoon, Evening)',
-        completed: progress.meals >= 60,
+        text: 'Log your sleep schedule',
+        completed: progress.optional.sleep >= 20,
+        progress: progress.optional.sleep,
+        required: true
+      },
+      {
+        id: '2',
+        text: 'Complete your meals',
+        completed: progress.meals >= 20,
         progress: progress.meals,
         required: true
       },
       {
-        id: '2', 
-        text: 'Track your symptoms',
-        completed: progress.symptoms >= 20,
-        progress: progress.symptoms,
-        required: true
-      },
-      {
         id: '3',
-        text: 'Take digestive photos (Morning & Evening)',
-        completed: progress.digestive >= 20,
-        progress: progress.digestive,
+        text: 'Log physical activity',
+        completed: progress.optional.sport >= 20,
+        progress: progress.optional.sport,
         required: true
       },
       {
         id: '4',
-        text: 'Log physical activity',
-        completed: progress.optional.sport >= 100,
-        progress: progress.optional.sport,
-        required: false
+        text: 'Track menstrual cycle',
+        completed: progress.optional.cycle >= 20,
+        progress: progress.optional.cycle,
+        required: false // Made optional since not everyone needs this
+      },
+      {
+        id: '5', 
+        text: 'Track your symptoms',
+        completed: progress.symptoms >= 20,
+        progress: progress.symptoms,
+        required: true
       }
     ];
   };
@@ -189,14 +206,17 @@ export default function HomeScreen() {
       if (user) {
         try {
           const date = selectedDate.toISOString().split('T')[0];
+          console.log('🏠 HOME: Loading data for date:', date, 'user:', user.id);
           const record = await trackingService.getTrackingByDate(user.id, date);
+          console.log('📦 HOME: Loaded record:', record);
           setDailyRecord(record);
           
           const progress = calculateTrackingProgress(record);
+          console.log('📊 HOME: Calculated progress:', progress);
           setTrackingProgress(progress);
           setTasks(generateTasksFromProgress(progress));
         } catch (error) {
-          console.error('Error loading tracking data:', error);
+          console.error('❌ HOME: Error loading tracking data:', error);
           // Set empty progress and tasks if there's an error
           setTasks(generateTasksFromProgress(trackingProgress));
         }
@@ -204,7 +224,7 @@ export default function HomeScreen() {
     };
     
     loadData();
-  }, [user, selectedDate]);
+  }, [user, selectedDate, refreshTrigger]); // Added refreshTrigger
 
   // Add focus listener to reload data when returning from tracking
   useEffect(() => {
@@ -228,7 +248,7 @@ export default function HomeScreen() {
     });
 
     return unsubscribe;
-  }, [navigation, user, selectedDate]);
+  }, [navigation, user, selectedDate, refreshTrigger]); // Added refreshTrigger
 
   const todayKey = selectedDate.toLocaleDateString('sv-SE');
   const markedDates = [todayKey];
@@ -244,15 +264,21 @@ export default function HomeScreen() {
 
   // Simple progress calculation: completed activities / total activities
   const completedActivities = [
+    trackingProgress.optional?.sleep > 0, // Sleep tracked
     trackingProgress.meals > 0, // Meals tracked
-    trackingProgress.symptoms > 0, // Symptoms tracked
-    trackingProgress.digestive > 0, // Photos taken
     trackingProgress.optional?.sport > 0, // Sport activity
     trackingProgress.optional?.cycle > 0, // Cycle tracked
+    trackingProgress.symptoms > 0, // Symptoms tracked
   ].filter(Boolean).length;
   
   const totalActivities = 5;
   const simpleProgress = Math.round((completedActivities / totalActivities) * 100);
+  
+  // Calculate total progress from trackingProgress (should match simpleProgress)
+  const totalTrackingProgress = trackingProgress.meals + trackingProgress.symptoms + 
+    trackingProgress.optional.sleep + trackingProgress.optional.sport + trackingProgress.optional.cycle;
+  
+  console.log('🏠 HOME: Simple progress:', simpleProgress, '% | Total tracking progress:', totalTrackingProgress, '%');
   
   const completedRequiredTasks = tasks.filter(task => task.required && task.completed).length;
   const totalRequiredTasks = tasks.filter(task => task.required).length;
@@ -299,23 +325,29 @@ export default function HomeScreen() {
             const isSelected = day.toDateString() === selectedDate.toDateString();
             const isToday = day.toDateString() === today.toDateString();
             const isCurrentMonth = day.getMonth() === currentMonth;
+            const isFuture = day > today; // Check if date is in the future
             
             return (
               <TouchableOpacity
                 key={index}
                 onPress={() => {
-                  setSelectedDate(day);
-                  setShowCalendar(false);
+                  if (!isFuture) { // Only allow selection if not future
+                    setSelectedDate(day);
+                    setShowCalendar(false);
+                  }
                 }}
                 style={[
                   styles.dayCell,
-                  isSelected && styles.selectedDay
+                  isSelected && styles.selectedDay,
+                  isFuture && styles.disabledDay // Add disabled style for future dates
                 ]}
+                disabled={isFuture} // Disable touch for future dates
               >
                 <Text style={[
                   styles.dayText,
                   isSelected ? styles.selectedDayText :
                   isToday ? styles.todayText :
+                  isFuture ? styles.disabledDayText : // Gray out future dates
                   isCurrentMonth ? styles.currentMonthText : styles.otherMonthText
                 ]}>
                   {day.getDate()}
@@ -369,7 +401,7 @@ export default function HomeScreen() {
           <View style={styles.card}>
             <View style={styles.progressHeader}>
               <Text style={styles.progressTitle}>Daily Progress</Text>
-              <Text style={styles.progressPercentage}>{simpleProgress}%</Text>
+              <Text style={styles.progressPercentage}>{totalTrackingProgress}%</Text>
             </View>
             
             {/* Main Progress Bar */}
@@ -377,7 +409,7 @@ export default function HomeScreen() {
               <View 
                 style={[
                   styles.progressBar,
-                  { width: `${Math.min(simpleProgress, 100)}%` }
+                  { width: `${Math.min(totalTrackingProgress, 100)}%` }
                 ]}
               />
             </View>

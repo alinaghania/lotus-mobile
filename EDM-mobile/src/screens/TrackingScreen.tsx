@@ -3,10 +3,12 @@ import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import { useDate } from '../contexts/DateContext';
 import { trackingService } from '../services/trackingService';
 import { DailyRecord, MealData, TrackingProgress } from '../types/tracking';
 import MultiSelect from '../components/MultiSelect';
 import { mealOptions, snackOptions, drinkTypes, sportActivities, weekDays } from '../constants/meals';
+import { useNavigation } from '@react-navigation/native';
 
 import { trackingStyles } from '../styles/trackingStyles';
 
@@ -46,8 +48,10 @@ type MealSection = 'morning' | 'afternoon' | 'evening' | 'snack' | 'drinks';
 
 export default function TrackingScreen({ route }: { route?: { params?: { initialTab?: TabType } } }) {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabType>(route?.params?.initialTab || 'symptoms');
+  const navigation = useNavigation();
+  const [activeTab, setActiveTab] = useState<TabType>(route?.params?.initialTab || 'sleep');
   const [saved, setSaved] = useState(false);
+  const { selectedDate, triggerRefresh } = useDate();
 
   // Symptoms state
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
@@ -67,6 +71,151 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
     sleepDuration: 0
   });
   const [sameSleepRoutine, setSameSleepRoutine] = useState(false);
+
+  // Auto-calculate sleep duration when bedTime or wakeTime changes
+  useEffect(() => {
+    if (sleepData.bedTime && sleepData.wakeTime) {
+      const bedTime = new Date(`2024-01-01 ${sleepData.bedTime}`);
+      let wakeTime = new Date(`2024-01-01 ${sleepData.wakeTime}`);
+      
+      // If wake time is earlier than bed time, assume it's next day
+      if (wakeTime < bedTime) {
+        wakeTime = new Date(`2024-01-02 ${sleepData.wakeTime}`);
+      }
+      
+      const diffMs = wakeTime.getTime() - bedTime.getTime();
+      const duration = Math.round(diffMs / (1000 * 60 * 60) * 10) / 10; // Round to 1 decimal
+      
+      if (duration > 0 && duration !== sleepData.sleepDuration) {
+        setSleepData(prev => ({ ...prev, sleepDuration: duration }));
+      }
+    }
+  }, [sleepData.bedTime, sleepData.wakeTime]);
+
+  // Load saved data when component mounts or date changes
+  useEffect(() => {
+    const loadSavedData = async () => {
+      if (!user) return;
+
+      try {
+        const date = selectedDate.toISOString().split('T')[0];
+        console.log('🔍 TRACKING: Loading data for date:', date, 'user:', user.id);
+        const record = await trackingService.getTrackingByDate(user.id, date);
+        console.log('📦 TRACKING: Loaded record:', record);
+        
+        if (record) {
+          // Load sleep data
+          if (record.sleep) {
+            console.log('😴 TRACKING: Loading sleep data:', record.sleep);
+            setSleepData({
+              bedTime: record.sleep.bedTime || '',
+              wakeTime: record.sleep.wakeTime || '',
+              sleepQuality: record.sleep.sleepQuality || 0,
+              sleepDuration: record.sleep.sleepDuration || 0
+            });
+          } else {
+            console.log('😴 TRACKING: No sleep data found');
+          }
+
+          // Load meal data
+          if (record.meals) {
+            console.log('🍽️ TRACKING: Loading meal data:', record.meals);
+            setMealData({
+              morning: record.meals.morning || '',
+              afternoon: record.meals.afternoon || '',
+              evening: record.meals.evening || '',
+              snack: record.meals.snack || '',
+              drinkType: record.meals.drinkType || '',
+              drinkQuantities: record.meals.drinkQuantities || {}
+            });
+          } else {
+            console.log('🍽️ TRACKING: No meal data found');
+          }
+
+          // Load symptoms
+          if (record.symptoms) {
+            console.log('🩺 TRACKING: Loading symptoms:', record.symptoms);
+            setSelectedSymptoms(record.symptoms);
+          } else {
+            console.log('🩺 TRACKING: No symptoms found');
+          }
+
+          // Load sports
+          if (record.activity) {
+            console.log('💪 TRACKING: Loading activity:', record.activity);
+            setSelectedSports(record.activity);
+          } else {
+            console.log('💪 TRACKING: No activity found');
+          }
+
+          // Load cycle data
+          if (record.period) {
+            console.log('🌸 TRACKING: Loading period:', record.period);
+            setHasPeriod(record.period.active ? 'yes' : 'no');
+          } else {
+            console.log('🌸 TRACKING: No period data found');
+          }
+        } else {
+          console.log('❌ TRACKING: No record found for this date');
+        }
+      } catch (error) {
+        console.error('❌ TRACKING: Error loading saved data:', error);
+      }
+    };
+
+    loadSavedData();
+  }, [user, selectedDate]); // Load when user or date changes
+
+  // Add focus listener to reload data when returning to this screen
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', async () => {
+      if (!user) return;
+
+      try {
+        const date = selectedDate.toISOString().split('T')[0];
+        const record = await trackingService.getTrackingByDate(user.id, date);
+        
+        if (record) {
+          // Reload all data when screen is focused
+          if (record.sleep) {
+            setSleepData({
+              bedTime: record.sleep.bedTime || '',
+              wakeTime: record.sleep.wakeTime || '',
+              sleepQuality: record.sleep.sleepQuality || 0,
+              sleepDuration: record.sleep.sleepDuration || 0
+            });
+          }
+
+          if (record.meals) {
+            setMealData({
+              morning: record.meals.morning || '',
+              afternoon: record.meals.afternoon || '',
+              evening: record.meals.evening || '',
+              snack: record.meals.snack || '',
+              drinkType: record.meals.drinkType || '',
+              drinkQuantities: record.meals.drinkQuantities || {}
+            });
+          }
+
+          if (record.symptoms) {
+            setSelectedSymptoms(record.symptoms);
+          }
+
+          if (record.activity) {
+            setSelectedSports(record.activity);
+          }
+
+          if (record.period) {
+            setHasPeriod(record.period.active ? 'yes' : 'no');
+          }
+        }
+      } catch (error) {
+        console.error('Error loading saved data on focus:', error);
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, user, selectedDate]);
 
   // Cycle state
   const [hasPeriod, setHasPeriod] = useState<'yes' | 'no' | 'none' | ''>('');
@@ -90,57 +239,36 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
     { icon: 'water-outline', title: 'Drinks', key: 'drinks' as const, type: 'drink' as const, required: false },
   ];
 
-  // Calculate progress
-  const calculateProgress = (): TrackingProgress => {
-    const progress: TrackingProgress = {
-      meals: 0,
-      symptoms: 0,
-      digestive: 0,
-      optional: {
-        sport: 0,
-        cycle: 0,
-        drinks: 0,
-        snacks: 0
-      }
-    };
-
-    // Required meals (20% each = 60% total)
-    const requiredMeals = ['morning', 'afternoon', 'evening'];
-    const completedMeals = requiredMeals.filter(meal => {
-      const value = mealData[meal as keyof MealData] as string;
-      return value && (value === 'Fasting' || value.trim() !== '');
-    });
-    progress.meals = (completedMeals.length / requiredMeals.length) * 60;
-
-    // Symptoms (20%)
-    progress.symptoms = selectedSymptoms.length > 0 ? 20 : 0;
-
-    // Digestive photos would be calculated from DigestiveIssuesScreen (20%)
-    // For now, we'll assume it's tracked separately
-    progress.digestive = 0; // Will be updated when digestive screen is integrated
-
-    // Optional items
-    progress.optional.sport = sportActivities.length > 0 ? 100 : 0;
-    progress.optional.cycle = hasPeriod !== '' ? 100 : 0;
-    progress.optional.drinks = mealData.drinkType && mealData.drinkType.trim() !== '' ? 100 : 0;
-    progress.optional.snacks = mealData.snack && mealData.snack.trim() !== '' ? 100 : 0;
-
-    return progress;
+  // Check if a meal section is completed
+  const isMealSectionCompleted = (sectionIndex: number): boolean => {
+    const section = mealSections[sectionIndex];
+    if (!section.required) return true; // Optional sections don't block progression
+    
+    const value = mealData[section.key as keyof MealData] as string;
+    return value && value.trim() !== '';
   };
 
-  const progress = calculateProgress();
-  const totalProgress = progress.meals + progress.symptoms + progress.digestive;
+  // Check if user can proceed to next meal section
+  const canProceedToNext = (): boolean => {
+    return isMealSectionCompleted(mealSectionIndex);
+  };
 
+  // Save to database with proper date and alerts
   const saveToDatabase = async (data: Partial<DailyRecord>) => {
     if (!user) return;
 
     try {
-      const date = new Date().toISOString().split('T')[0];
-      await trackingService.createTracking(user.id, date, { date, ...data });
+      const date = selectedDate.toISOString().split('T')[0]; // Use selectedDate not today
+      console.log('💾 TRACKING: Saving data for date:', date);
+      console.log('💾 TRACKING: Data to save:', data);
+      await trackingService.updateTracking(user.id, date, data); // Use updateTracking to merge data
+      console.log('✅ TRACKING: Data saved successfully');
+      Alert.alert('Success', 'Data saved successfully!');
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      triggerRefresh(); // Trigger refresh in Home screen
     } catch (error) {
-      console.error('Error saving data:', error);
+      console.error('❌ TRACKING: Error saving data:', error);
       Alert.alert('Error', 'Failed to save data');
     }
   };
@@ -151,12 +279,7 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
 
   const handleSaveSport = async () => {
     await saveToDatabase({
-      activity: sportActivities.length > 0 ? {
-        type: sportActivities.join(', '),
-        duration: Object.values(sportDurations).reduce((a, b) => a + b, 0),
-        intensity: 'moderate' as const,
-        notes: ''
-      } : undefined
+      activity: selectedSports // Now array of strings
     });
   };
 
@@ -182,6 +305,30 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
     });
   };
 
+  const handleSaveSleep = async () => {
+    // Calculate duration automatically
+    let calculatedDuration = sleepData.sleepDuration;
+    if (sleepData.bedTime && sleepData.wakeTime) {
+      const bedTime = new Date(`2024-01-01 ${sleepData.bedTime}`);
+      let wakeTime = new Date(`2024-01-01 ${sleepData.wakeTime}`);
+      
+      // If wake time is earlier than bed time, assume it's next day
+      if (wakeTime < bedTime) {
+        wakeTime = new Date(`2024-01-02 ${sleepData.wakeTime}`);
+      }
+      
+      const diffMs = wakeTime.getTime() - bedTime.getTime();
+      calculatedDuration = Math.round(diffMs / (1000 * 60 * 60) * 10) / 10; // Round to 1 decimal
+    }
+
+    await saveToDatabase({
+      sleep: {
+        ...sleepData,
+        sleepDuration: calculatedDuration
+      }
+    });
+  };
+
   const toggleSymptom = (symptom: string) => {
     setSelectedSymptoms(prev =>
       prev.includes(symptom)
@@ -191,51 +338,74 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
   };
 
   const renderProgressBar = () => {
-    // Simple progress calculation: completed activities / total activities
-    const completedActivities = [
-      selectedSymptoms.length > 0, // Symptoms tracked
-      mealData.morning && (mealData.morning === 'Fasting' || mealData.morning.trim() !== ''), // Morning meal
-      mealData.afternoon && (mealData.afternoon === 'Fasting' || mealData.afternoon.trim() !== ''), // Afternoon meal  
-      mealData.evening && (mealData.evening === 'Fasting' || mealData.evening.trim() !== ''), // Evening meal
-      sportActivities.length > 0, // Sport activity
-    ].filter(Boolean).length;
+    // Calculate progress: 20% per tab (5 tabs = 100%) - SAME AS HOME
+    // Use current local state to show real-time progress including unsaved changes
+    const tabProgress = {
+      sleep: (sleepData.bedTime || sleepData.wakeTime) ? 20 : 0,
+      meals: (mealData.morning || mealData.afternoon || mealData.evening) ? 20 : 0,
+      sport: selectedSports.length > 0 ? 20 : 0,
+      cycle: hasPeriod && hasPeriod !== '' ? 20 : 0,
+      symptoms: selectedSymptoms.length > 0 ? 20 : 0,
+    };
     
-    const totalActivities = 5;
-    const simpleProgress = Math.round((completedActivities / totalActivities) * 100);
+    console.log('🧮 TRACKING: Current states for progress calculation:');
+    console.log('😴 TRACKING: sleepData:', sleepData, '→ progress:', tabProgress.sleep);
+    console.log('🍽️ TRACKING: mealData:', mealData, '→ progress:', tabProgress.meals);
+    console.log('💪 TRACKING: selectedSports:', selectedSports, '→ progress:', tabProgress.sport);
+    console.log('🌸 TRACKING: hasPeriod:', hasPeriod, '→ progress:', tabProgress.cycle);
+    console.log('🩺 TRACKING: selectedSymptoms:', selectedSymptoms, '→ progress:', tabProgress.symptoms);
+    
+    const totalProgress = Object.values(tabProgress).reduce((sum, val) => sum + val, 0);
+    const completedTabs = Object.values(tabProgress).filter(val => val > 0).length;
+    
+    console.log('📊 TRACKING: Total calculated progress:', totalProgress, '%');
     
     return (
-      <View style={trackingStyles.progressCard}>
-        <View style={trackingStyles.progressHeader}>
-          <Text style={trackingStyles.progressTitle}>Daily Progress</Text>
-          <Text style={trackingStyles.progressPercentage}>{simpleProgress}%</Text>
-        </View>
-        
-        {/* Main Progress Bar */}
-        <View style={trackingStyles.progressBarContainer}>
-          <View 
-            style={[
-              trackingStyles.progressBar,
-              { width: `${Math.min(simpleProgress, 100)}%` }
-            ]}
-          />
+      <>
+        {/* Date Display */}
+        <View style={trackingStyles.dateDisplay}>
+          <Text style={trackingStyles.dateText}>
+            {selectedDate.toLocaleDateString('en-US', { 
+              weekday: 'long', 
+              month: 'long', 
+              day: 'numeric' 
+            })}
+          </Text>
         </View>
 
-        {/* Simple Activities Checklist */}
-        <View style={trackingStyles.progressBreakdown}>
-          <Text style={trackingStyles.progressLabel}>Completed: {completedActivities} of {totalActivities} activities</Text>
+        <View style={trackingStyles.progressCard}>
+          <View style={trackingStyles.progressHeader}>
+            <Text style={trackingStyles.progressTitle}>Daily Progress</Text>
+            <Text style={trackingStyles.progressPercentage}>{totalProgress}%</Text>
+          </View>
+          
+          {/* Main Progress Bar */}
+          <View style={trackingStyles.progressBarContainer}>
+            <View 
+              style={[
+                trackingStyles.progressBar,
+                { width: `${Math.min(totalProgress, 100)}%` }
+              ]}
+            />
+          </View>
+
+          {/* Simple Activities Checklist */}
+          <View style={trackingStyles.progressBreakdown}>
+            <Text style={trackingStyles.progressLabel}>Completed: {completedTabs} of 5 activities</Text>
+          </View>
         </View>
-      </View>
+      </>
     );
   };
 
   const renderTabs = () => (
     <View style={trackingStyles.tabsContainer}>
       {[
+        { key: 'sleep', label: 'Sleep' },
         { key: 'meals', label: 'Meals' },
         { key: 'sport', label: 'Sport' },
         { key: 'cycle', label: 'Cycle' },
-        { key: 'symptoms', label: 'Symptoms' },
-        { key: 'sleep', label: 'Sleep' }
+        { key: 'symptoms', label: 'Symptoms' }
       ].map(tab => (
         <TouchableOpacity
           key={tab.key}
@@ -469,10 +639,18 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
+              disabled={!canProceedToNext()}
               onPress={() => setMealSectionIndex(i => Math.min(mealSections.length - 1, i + 1))}
-              style={[trackingStyles.navButton, trackingStyles.navButtonPrimary]}
+              style={[
+                trackingStyles.navButton, 
+                canProceedToNext() ? trackingStyles.navButtonPrimary : trackingStyles.navButtonDisabled
+              ]}
             >
-              <Text style={trackingStyles.navButtonTextPrimary}>Next</Text>
+              <Text style={
+                canProceedToNext() ? trackingStyles.navButtonTextPrimary : trackingStyles.navButtonTextDisabled
+              }>
+                Next
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -688,22 +866,17 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
         </View>
 
         <View style={trackingStyles.sportActivityRow}>
-          <Text style={trackingStyles.sportActivityLabel}>Duration (hours):</Text>
-          <TextInput
-            value={String(sleepData.sleepDuration || '')}
-            onChangeText={(text) => {
-              const duration = parseFloat(text) || 0;
-              setSleepData(prev => ({ ...prev, sleepDuration: duration }));
-            }}
-            keyboardType="numeric"
-            style={trackingStyles.sportActivityInput}
-            placeholder="8"
-          />
+          <Text style={trackingStyles.sportActivityLabel}>Duration:</Text>
+          <View style={[trackingStyles.sportActivityInput, { justifyContent: 'center', backgroundColor: '#f3f4f6' }]}>
+            <Text style={{ color: '#6b7280', fontSize: 16 }}>
+              {sleepData.sleepDuration > 0 ? `${sleepData.sleepDuration}h` : 'Auto-calculated'}
+            </Text>
+          </View>
         </View>
       </View>
 
       <TouchableOpacity
-        onPress={() => console.log('Save sleep data')}
+        onPress={handleSaveSleep}
         style={trackingStyles.saveButton}
       >
         <Text style={trackingStyles.saveButtonText}>Save Sleep Data</Text>
@@ -730,30 +903,21 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
 
   return (
     <SafeAreaView style={trackingStyles.container}>
-      {saved && (
-        <View style={trackingStyles.successToast}>
-          <Text style={trackingStyles.successToastText}>Data saved successfully!</Text>
-        </View>
-      )}
-      
-      <ScrollView style={trackingStyles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <View style={trackingStyles.padding}>
-          {/* Header */}
+      <View style={trackingStyles.scrollContainer}>
+        <ScrollView style={trackingStyles.padding}>
+          {/* Simplified Header */}
           <View style={trackingStyles.header}>
-            <Text style={trackingStyles.headerTitle}>Daily Tracking</Text>
-            <Text style={trackingStyles.headerSubtitle}>Track your daily health data</Text>
+            <Text style={trackingStyles.welcomeText}>Track Your Health</Text>
           </View>
 
-          {/* Progress Bar */}
           {renderProgressBar()}
-
-          {/* Tabs */}
           {renderTabs()}
 
-          {/* Content */}
-          {renderContent()}
-        </View>
-      </ScrollView>
+          <View style={trackingStyles.content}>
+            {renderContent()}
+          </View>
+        </ScrollView>
+      </View>
     </SafeAreaView>
   );
 } 

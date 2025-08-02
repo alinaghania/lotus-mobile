@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, StyleSheet, Dimensions, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, StyleSheet, Dimensions, Alert, TextInput, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -368,6 +368,71 @@ const digestiveStyles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  
+  // Comment Modal styles
+  commentModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  commentModalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    minHeight: 300,
+  },
+  commentModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  commentModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  commentInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    height: 120,
+    textAlignVertical: 'top',
+    marginBottom: 20,
+  },
+  commentModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  commentCancelButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    alignItems: 'center',
+  },
+  commentCancelText: {
+    color: '#6b7280',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  commentPostButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: '#7c3aed',
+    alignItems: 'center',
+  },
+  commentPostText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 16,
+  },
 });
 
 const DIGESTIVE_PHOTOS_KEY = 'digestive_photos';
@@ -376,6 +441,9 @@ export default function DigestiveScreen() {
   const [photos, setPhotos] = useState<DigestivePhoto[]>([]);
   const [selectedTime, setSelectedTime] = useState<'morning' | 'evening'>('morning');
   const [viewMode, setViewMode] = useState<'grid' | 'feed'>('grid');
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [selectedPhotoId, setSelectedPhotoId] = useState<string>('');
+  const [commentText, setCommentText] = useState('');
 
   // Load photos on component mount
   useEffect(() => {
@@ -479,13 +547,21 @@ export default function DigestiveScreen() {
     ));
   };
 
-  const addComment = (photoId: string, comment: string) => {
-    if (comment.trim()) {
+  const openCommentModal = (photoId: string) => {
+    setSelectedPhotoId(photoId);
+    setShowCommentModal(true);
+  };
+
+  const addComment = () => {
+    if (commentText.trim() && selectedPhotoId) {
       setPhotos(prev => prev.map(photo => 
-        photo.id === photoId 
-          ? { ...photo, comments: [...photo.comments, comment.trim()] }
+        photo.id === selectedPhotoId 
+          ? { ...photo, comments: [...photo.comments, commentText.trim()] }
           : photo
       ));
+      setCommentText('');
+      setShowCommentModal(false);
+      setSelectedPhotoId('');
     }
   };
 
@@ -682,10 +758,7 @@ export default function DigestiveScreen() {
                   
                   <TouchableOpacity 
                     style={digestiveStyles.interactionButton}
-                    onPress={() => {
-                      const comment = prompt("Add a comment:");
-                      if (comment) addComment(photo.id, comment);
-                    }}
+                    onPress={() => openCommentModal(photo.id)}
                   >
                     <Ionicons name="chatbubble-outline" size={20} color="#374151" />
                     <Text style={digestiveStyles.interactionText}>
@@ -722,6 +795,62 @@ export default function DigestiveScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      {/* Comment Modal */}
+      <Modal
+        visible={showCommentModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowCommentModal(false)}
+      >
+        <View style={digestiveStyles.commentModalOverlay}>
+          <View style={digestiveStyles.commentModalContent}>
+            <View style={digestiveStyles.commentModalHeader}>
+              <Text style={digestiveStyles.commentModalTitle}>Add Comment</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowCommentModal(false);
+                  setCommentText('');
+                  setSelectedPhotoId('');
+                }}
+              >
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+            
+            <TextInput
+              style={digestiveStyles.commentInput}
+              value={commentText}
+              onChangeText={setCommentText}
+              placeholder="Write your comment..."
+              multiline
+              numberOfLines={4}
+              autoFocus
+            />
+            
+            <View style={digestiveStyles.commentModalActions}>
+              <TouchableOpacity
+                style={digestiveStyles.commentCancelButton}
+                onPress={() => {
+                  setShowCommentModal(false);
+                  setCommentText('');
+                  setSelectedPhotoId('');
+                }}
+              >
+                <Text style={digestiveStyles.commentCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={digestiveStyles.commentPostButton}
+                onPress={addComment}
+                disabled={!commentText.trim()}
+              >
+                <Text style={digestiveStyles.commentPostText}>Post</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 } 

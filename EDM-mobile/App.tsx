@@ -6,6 +6,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthProvider } from './src/contexts/AuthContext';
+import { DateProvider } from './src/contexts/DateContext';
 
 // Import screens
 import LoginScreen from './src/screens/auth/LoginScreen';
@@ -35,18 +36,18 @@ function MainTabs() {
               iconName = focused ? 'calendar' : 'calendar-outline';
               break;
             case 'Analytics':
-              iconName = focused ? 'stats-chart' : 'stats-chart-outline';
+              iconName = focused ? 'bar-chart' : 'bar-chart-outline';
               break;
             case 'Profile':
               iconName = focused ? 'person' : 'person-outline';
               break;
             default:
-              iconName = 'help-outline';
+              iconName = 'circle';
           }
 
           return <Ionicons name={iconName as any} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#000000',
+        tabBarActiveTintColor: '#6366f1',
         tabBarInactiveTintColor: 'gray',
         headerShown: false,
       })}
@@ -62,43 +63,45 @@ function MainTabs() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <NavigationContainer>
-          <Stack.Navigator initialRouteName="Login">
-            <Stack.Screen
-              name="Login"
-              component={LoginScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="Register"
-              component={RegisterScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="Main"
-              component={MainTabs}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="CharacterCustomization"
-              component={CharacterCustomizationScreen}
-              options={{
-                title: 'Customize Your Lotus',
-                headerBackTitle: 'Back',
-              }}
-            />
-            <Stack.Screen
-              name="DigestiveScreen"
-              component={DigestiveScreen}
-              options={{
-                title: 'Digestive Tracker',
-                headerBackTitle: 'Back',
-              }}
-            />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </AuthProvider>
+      <DateProvider>
+        <AuthProvider>
+          <NavigationContainer>
+            <Stack.Navigator initialRouteName="Login">
+              <Stack.Screen
+                name="Login"
+                component={LoginScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="Register"
+                component={RegisterScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="Main"
+                component={MainTabs}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="CharacterCustomization"
+                component={CharacterCustomizationScreen}
+                options={{
+                  title: 'Customize Your Lotus',
+                  headerBackTitle: 'Back',
+                }}
+              />
+              <Stack.Screen
+                name="DigestiveScreen"
+                component={DigestiveScreen}
+                options={{
+                  title: 'Digestive Tracker',
+                  headerBackTitle: 'Back',
+                }}
+              />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </AuthProvider>
+      </DateProvider>
       <StatusBar style="auto" />
     </SafeAreaProvider>
   );

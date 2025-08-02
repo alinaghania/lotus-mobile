@@ -482,24 +482,30 @@ export const styles = StyleSheet.create({
     margin: 1,
   },
   selectedDay: {
-    backgroundColor: '#111827',
-    borderRadius: 8,
+    backgroundColor: '#7c3aed',
+  },
+  disabledDay: {
+    opacity: 0.3,
   },
   dayText: {
-    fontSize: 14,
+    fontSize: 16,
+    textAlign: 'center',
   },
   selectedDayText: {
     color: 'white',
     fontWeight: 'bold',
   },
   todayText: {
-    color: '#111827',
+    color: '#ef4444',
     fontWeight: 'bold',
   },
   currentMonthText: {
-    color: '#374151',
+    color: '#1f2937',
   },
   otherMonthText: {
+    color: '#9ca3af',
+  },
+  disabledDayText: {
     color: '#d1d5db',
   },
 }); 

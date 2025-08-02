@@ -18,11 +18,12 @@ export interface DailyRecord {
     photos: DigestivePhotos;
     notes?: string;
   };
-  activity?: {
-    type: string;
-    duration: number;
-    intensity: 'low' | 'moderate' | 'high';
-    notes?: string;
+  activity?: string[]; // Array of activity names
+  sleep?: {
+    bedTime: string;
+    wakeTime: string;
+    sleepQuality: number;
+    sleepDuration: number;
   };
   symptoms?: string[];
   period?: {
@@ -72,12 +73,13 @@ export interface HealthScore {
 }
 
 export interface TrackingProgress {
-  meals: number; // 60% total (20% per required meal)
+  meals: number; // 20%
   symptoms: number; // 20%
-  digestive: number; // 20%
+  digestive: number; // 20% (not used currently)
   optional: {
-    sport: number;
-    cycle: number;
+    sleep: number; // 20%
+    sport: number; // 20%
+    cycle: number; // 20%
     drinks: number;
     snacks: number;
   };

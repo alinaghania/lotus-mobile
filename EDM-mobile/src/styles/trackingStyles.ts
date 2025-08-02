@@ -5,81 +5,90 @@ const { width } = Dimensions.get('window');
 export const trackingStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#f8fafc',
   },
   scrollContainer: {
     flex: 1,
+  },
+  dateDisplay: {
+    backgroundColor: 'white',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    marginBottom: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    alignItems: 'center',
+  },
+  dateText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ef4444', // Red and bold like in Home
   },
   padding: {
     padding: 16,
   },
   header: {
     marginBottom: 24,
+    alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 30,
+  welcomeText: {
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 8,
+    color: '#1f2937',
+    textAlign: 'center',
   },
-  headerSubtitle: {
-    color: '#6b7280',
-    fontSize: 16,
+  content: {
+    marginTop: 16,
   },
-  
-  // Progress Bar Styles
+
+  // Progress Card Styles
   progressCard: {
     backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
   progressHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 16,
   },
   progressTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#111827',
+    fontWeight: '600',
+    color: '#1f2937',
   },
   progressPercentage: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#10b981',
+    color: '#059669', // Emerald green
   },
   progressBarContainer: {
-    width: '100%',
-    backgroundColor: '#e5e7eb',
-    borderRadius: 6,
-    height: 12,
+    height: 8,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    overflow: 'hidden',
     marginBottom: 12,
   },
   progressBar: {
-    backgroundColor: '#10b981',
-    height: 12,
-    borderRadius: 6,
+    height: '100%',
+    backgroundColor: '#059669', // Emerald green
+    borderRadius: 8,
   },
   progressBreakdown: {
-    gap: 8,
-  },
-  progressItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
   },
   progressLabel: {
     fontSize: 14,
-    color: '#374151',
+    color: '#6b7280',
+    fontWeight: '500',
   },
   progressValue: {
     fontSize: 14,
@@ -123,64 +132,63 @@ export const trackingStyles = StyleSheet.create({
     color: '#dc2626',
   },
 
-  // Tabs Styles
+  // Tab Styles with improved colors
   tabsContainer: {
     flexDirection: 'row',
-    backgroundColor: '#f3f4f6',
-    borderRadius: 12,
+    backgroundColor: 'white',
+    borderRadius: 16,
     padding: 4,
-    marginBottom: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
   tab: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 8,
+    paddingHorizontal: 8,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   activeTab: {
-    backgroundColor: 'white',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-    borderWidth: 2,
-    borderColor: '#000',
+    backgroundColor: '#7c3aed', // Purple
   },
   tabText: {
-    textAlign: 'center',
-    fontWeight: '500',
+    fontSize: 12,
+    fontWeight: '600',
   },
   activeTabText: {
-    color: '#000',
+    color: 'white',
   },
   inactiveTabText: {
     color: '#6b7280',
   },
 
-  // Content Card Styles
+  // Content Card Styles with better spacing
   contentCard: {
     backgroundColor: 'white',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
   contentHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
     gap: 12,
   },
   contentTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#1f2937',
+    flex: 1,
   },
   contentSubtitle: {
     color: '#6b7280',
