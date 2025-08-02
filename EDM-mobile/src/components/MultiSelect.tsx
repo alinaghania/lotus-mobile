@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, Modal, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { saveCustomOption } from '../constants/meals';
 
 interface MultiSelectProps {
   label: string;
@@ -9,6 +10,7 @@ interface MultiSelectProps {
   onChange: (values: string[]) => void;
   allowOther?: boolean;
   disabled?: boolean;
+  category?: string; // For saving custom options
 }
 
 const multiSelectStyles = StyleSheet.create({
@@ -247,7 +249,8 @@ export default function MultiSelect({
   value, 
   onChange, 
   allowOther = false, 
-  disabled = false 
+  disabled = false,
+  category
 }: MultiSelectProps) {
   const [showModal, setShowModal] = useState(false);
   const [otherText, setOtherText] = useState('');
@@ -272,9 +275,16 @@ export default function MultiSelect({
     onChange(value.filter(v => v !== item));
   };
 
-  const addOther = () => {
+  const addOther = async () => {
     if (otherText.trim() && !value.includes(otherText.trim())) {
-      onChange([...value, otherText.trim()]);
+      const customOption = otherText.trim();
+      onChange([...value, customOption]);
+      
+      // Save custom option for future use
+      if (category) {
+        await saveCustomOption(category, customOption);
+      }
+      
       setOtherText('');
       setShowOtherInput(false);
     }

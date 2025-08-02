@@ -51,9 +51,9 @@ export const styles = StyleSheet.create({
     elevation: 1,
   },
   dateSelectorText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#111827',
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ef4444', // Red and bold as requested
   },
   card: {
     backgroundColor: 'white',
@@ -76,6 +76,84 @@ export const styles = StyleSheet.create({
   characterDisplay: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  lotusCardGlamour: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 24,
+    alignItems: 'center',
+  },
+  lotusSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  lotusDisplay: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 20,
+  },
+  endolotsDisplay: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#d97706',
+  },
+  endolotsNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#d97706',
+  },
+  endolotsLabel: {
+    fontSize: 12,
+    color: '#d97706',
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  customizeButtonGlamour: {
+    backgroundColor: '#7c3aed',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 20,
+    shadowColor: '#7c3aed',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  customizeButtonTextGlamour: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  customizeButton: {
+    backgroundColor: '#e5e7eb',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+  },
+  customizeButtonText: {
+    color: '#374151',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   characterInfo: {
     flex: 1,
@@ -124,7 +202,7 @@ export const styles = StyleSheet.create({
     marginBottom: 16,
   },
   progressBar: {
-    backgroundColor: '#10b981',
+    backgroundColor: '#059669', // Emerald green
     height: 16,
     borderRadius: 8,
   },
@@ -180,36 +258,40 @@ export const styles = StyleSheet.create({
   },
   quickActionButton: {
     flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
+    padding: 16,
+    borderRadius: 12,
     marginHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 70,
+    borderWidth: 2,
   },
-  quickActionGreen: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#bbf7d0',
+  quickActionYellow: {
+    backgroundColor: '#ffffff', // White background
+    borderColor: '#000000', // Black border
   },
-  quickActionRed: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
+  quickActionPurple: {
+    backgroundColor: '#ffffff', // White background
+    borderColor: '#000000', // Black border
   },
   quickActionBlue: {
-    backgroundColor: '#eff6ff',
-    borderColor: '#bfdbfe',
+    backgroundColor: '#ffffff', // White background
+    borderColor: '#000000', // Black border
   },
   quickActionText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     textAlign: 'center',
+    marginTop: 8,
   },
-  quickActionTextGreen: {
-    color: '#15803d',
+  quickActionTextYellow: {
+    color: '#d97706', // Amber yellow text
   },
-  quickActionTextRed: {
-    color: '#dc2626',
+  quickActionTextPurple: {
+    color: '#7c3aed', // Purple text
   },
   quickActionTextBlue: {
-    color: '#2563eb',
+    color: '#2563eb', // Dark blue text
   },
   tasksHeader: {
     flexDirection: 'row',

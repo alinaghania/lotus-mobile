@@ -97,6 +97,15 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
         </TouchableOpacity>
 
         <TouchableOpacity
+          onPress={() => navigation.navigate('DigestiveScreen')}
+          style={styles.customizeButton}
+        >
+          <Text style={styles.customizeButtonText}>
+            📸 Digestive Tracker
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           onPress={handleLogout}
           style={styles.logoutButton}
         >

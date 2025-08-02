@@ -101,14 +101,28 @@ export const analyticsStyles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   kpiCard: {
-    backgroundColor: '#f3f4f6',
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#d1d5db',
     alignItems: 'center',
     width: '48%',
     marginBottom: 8,
+  },
+  kpiCardSleep: {
+    backgroundColor: '#e0e7ff', // Light purple
+    borderColor: '#c7d2fe',
+  },
+  kpiCardQuality: {
+    backgroundColor: '#fef3c7', // Light yellow
+    borderColor: '#fde68a',
+  },
+  kpiCardSport: {
+    backgroundColor: '#dcfce7', // Light green
+    borderColor: '#bbf7d0',
+  },
+  kpiCardSymptoms: {
+    backgroundColor: '#ffe4e6', // Light pink
+    borderColor: '#fecaca',
   },
   kpiLabel: {
     fontSize: 12,

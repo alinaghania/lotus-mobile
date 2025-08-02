@@ -12,19 +12,22 @@ interface DigestivePhoto {
   time: 'morning' | 'evening';
   timestamp: Date;
   notes?: string;
+  likes: number;
+  isLiked: boolean;
+  comments: string[];
 }
 
 const digestiveStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+    minHeight: '100%',
   },
   header: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 0.5,
     borderBottomColor: '#e5e7eb',
@@ -57,7 +60,7 @@ const digestiveStyles = StyleSheet.create({
     borderRadius: 20,
   },
   viewButtonActive: {
-    backgroundColor: '#111827',
+    backgroundColor: '#7c3aed', // Purple
   },
   viewButtonInactive: {
     backgroundColor: '#f3f4f6',
@@ -73,21 +76,26 @@ const digestiveStyles = StyleSheet.create({
     color: '#6b7280',
   },
 
-  // Grid view
+  // Grid view - Instagram style
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    padding: 2,
+    paddingHorizontal: 2,
   },
   gridItem: {
     width: '33.33%',
     aspectRatio: 1,
-    padding: 2,
+    padding: 1,
   },
   gridPhoto: {
     width: '100%',
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 2,
+  },
+  gridPhotoContainer: {
+    position: 'relative',
+    width: '100%',
+    height: '100%',
   },
   gridTimeBadge: {
     position: 'absolute',
@@ -98,10 +106,10 @@ const digestiveStyles = StyleSheet.create({
     borderRadius: 8,
   },
   gridTimeBadgeMorning: {
-    backgroundColor: 'rgba(59, 130, 246, 0.8)',
+    backgroundColor: 'rgba(124, 58, 237, 0.8)', // Morning purple
   },
   gridTimeBadgeEvening: {
-    backgroundColor: 'rgba(139, 69, 19, 0.8)',
+    backgroundColor: 'rgba(139, 92, 246, 0.8)', // Evening lighter purple
   },
   gridTimeBadgeText: {
     color: 'white',
@@ -113,6 +121,26 @@ const digestiveStyles = StyleSheet.create({
     top: 4,
     left: 4,
     padding: 2,
+  },
+  
+  // Photo info
+  photoInfo: {
+    padding: 8,
+    backgroundColor: '#f9fafb',
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
+  },
+  photoDate: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  photoTime: {
+    fontSize: 10,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginTop: 2,
   },
 
   // Feed view (single posts)
@@ -135,7 +163,7 @@ const digestiveStyles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#333',
+    backgroundColor: '#e5e7eb',
     marginRight: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -166,7 +194,7 @@ const digestiveStyles = StyleSheet.create({
   photoContainer: {
     width: '100%',
     height: width,
-    backgroundColor: '#111',
+    backgroundColor: '#ffffff',
     position: 'relative',
   },
   photo: {
@@ -220,29 +248,39 @@ const digestiveStyles = StyleSheet.create({
     lineHeight: 18,
   },
   
-  // Add photo button
-  addPhotoCard: {
-    backgroundColor: '#111',
-    marginHorizontal: 16,
-    marginVertical: 8,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#333',
-    borderStyle: 'dashed',
-    height: 200,
+  // Upload section like Instagram
+  uploadSection: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 16,
+  },
+  cameraButton: {
+    backgroundColor: '#7c3aed',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#7c3aed',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  addPhotoButton: {
+  galleryButton: {
+    backgroundColor: '#059669',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
-  },
-  addPhotoText: {
-    color: '#666',
-    fontSize: 16,
-    marginTop: 8,
-    textAlign: 'center',
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   
   // Time selector
@@ -250,27 +288,84 @@ const digestiveStyles = StyleSheet.create({
     flexDirection: 'row',
     marginHorizontal: 16,
     marginBottom: 16,
-    backgroundColor: '#111',
-    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
     padding: 4,
   },
   timeOption: {
     flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
     alignItems: 'center',
+    marginHorizontal: 2,
   },
   timeOptionActive: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#7c3aed',
+    shadowColor: '#7c3aed',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 2,
   },
   timeOptionText: {
-    color: '#999',
+    color: '#6b7280',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   timeOptionTextActive: {
     color: 'white',
+  },
+  
+  // Comments and Likes
+  interactionBar: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  interactionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+  },
+  interactionButtonActive: {
+    backgroundColor: '#7c3aed',
+  },
+  interactionText: {
+    marginLeft: 6,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  interactionTextActive: {
+    color: 'white',
+  },
+  
+  // Save button improvements
+  saveButton: {
+    backgroundColor: '#7c3aed',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    marginHorizontal: 16,
+    marginVertical: 16,
+    alignItems: 'center',
+    shadowColor: '#7c3aed',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  saveButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 
@@ -299,7 +394,10 @@ export default function DigestiveScreen() {
         uri: result.assets[0].uri,
         time: selectedTime,
         timestamp: new Date(),
-        notes: `${selectedTime.charAt(0).toUpperCase() + selectedTime.slice(1)} belly check`
+        notes: `${selectedTime.charAt(0).toUpperCase() + selectedTime.slice(1)} belly check`,
+        likes: 0,
+        isLiked: false,
+        comments: []
       };
       setPhotos(prev => [newPhoto, ...prev]);
     }
@@ -325,7 +423,10 @@ export default function DigestiveScreen() {
         uri: result.assets[0].uri,
         time: selectedTime,
         timestamp: new Date(),
-        notes: `${selectedTime.charAt(0).toUpperCase() + selectedTime.slice(1)} belly check`
+        notes: `${selectedTime.charAt(0).toUpperCase() + selectedTime.slice(1)} belly check`,
+        likes: 0,
+        isLiked: false,
+        comments: []
       };
       setPhotos(prev => [newPhoto, ...prev]);
     }
@@ -333,6 +434,24 @@ export default function DigestiveScreen() {
 
   const deletePhoto = (photoId: string) => {
     setPhotos(prev => prev.filter(photo => photo.id !== photoId));
+  };
+
+  const toggleLike = (photoId: string) => {
+    setPhotos(prev => prev.map(photo => 
+      photo.id === photoId 
+        ? { ...photo, isLiked: !photo.isLiked, likes: photo.isLiked ? photo.likes - 1 : photo.likes + 1 }
+        : photo
+    ));
+  };
+
+  const addComment = (photoId: string, comment: string) => {
+    if (comment.trim()) {
+      setPhotos(prev => prev.map(photo => 
+        photo.id === photoId 
+          ? { ...photo, comments: [...photo.comments, comment.trim()] }
+          : photo
+      ));
+    }
   };
 
   const formatTime = (date: Date) => {
@@ -358,111 +477,108 @@ export default function DigestiveScreen() {
   };
 
   return (
-    <SafeAreaView style={digestiveStyles.container}>
+    <SafeAreaView style={[digestiveStyles.container, { backgroundColor: '#fff' }]}>
       {/* Header */}
       <View style={digestiveStyles.header}>
-        <Ionicons name="arrow-back" size={24} color="#111827" />
         <Text style={digestiveStyles.headerTitle}>Digestive Tracker</Text>
-        <TouchableOpacity style={digestiveStyles.headerButton}>
-          <Ionicons name="settings-outline" size={24} color="#111827" />
+      </View>
+
+      {/* Time Selector */}
+      <View style={digestiveStyles.timeSelector}>
+        {(['morning', 'evening'] as const).map((time) => (
+          <TouchableOpacity
+            key={time}
+            style={[
+              digestiveStyles.timeOption,
+              selectedTime === time && digestiveStyles.timeOptionActive
+            ]}
+            onPress={() => setSelectedTime(time)}
+          >
+            <Text style={[
+              digestiveStyles.timeOptionText,
+              selectedTime === time && digestiveStyles.timeOptionTextActive
+            ]}>
+              {time === 'morning' ? 'Morning' : 'Evening'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Upload Section */}
+      <View style={digestiveStyles.uploadSection}>
+        <TouchableOpacity style={digestiveStyles.cameraButton} onPress={takePicture}>
+          <Ionicons name="camera" size={32} color="white" />
+        </TouchableOpacity>
+        <TouchableOpacity style={digestiveStyles.galleryButton} onPress={selectFromLibrary}>
+          <Ionicons name="image" size={32} color="white" />
+        </TouchableOpacity>
+      </View>
+
+      {/* View Toggle */}
+      <View style={digestiveStyles.viewToggle}>
+        <TouchableOpacity
+          style={[
+            digestiveStyles.viewButton,
+            viewMode === 'grid' ? digestiveStyles.viewButtonActive : digestiveStyles.viewButtonInactive
+          ]}
+          onPress={() => setViewMode('grid')}
+        >
+          <Text style={[
+            digestiveStyles.viewButtonText,
+            viewMode === 'grid' ? digestiveStyles.viewButtonTextActive : digestiveStyles.viewButtonTextInactive
+          ]}>
+            Grid
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            digestiveStyles.viewButton,
+            viewMode === 'feed' ? digestiveStyles.viewButtonActive : digestiveStyles.viewButtonInactive
+          ]}
+          onPress={() => setViewMode('feed')}
+        >
+          <Text style={[
+            digestiveStyles.viewButtonText,
+            viewMode === 'feed' ? digestiveStyles.viewButtonTextActive : digestiveStyles.viewButtonTextInactive
+          ]}>
+            Feed
+          </Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView style={digestiveStyles.scrollContainer}>
-                {/* Time Selector */}
-        <View style={digestiveStyles.timeSelector}>
-          {(['morning', 'evening'] as const).map((time) => (
-            <TouchableOpacity
-              key={time}
-              style={[
-                digestiveStyles.timeOption,
-                selectedTime === time && digestiveStyles.timeOptionActive
-              ]}
-              onPress={() => setSelectedTime(time)}
-            >
-              <Text style={[
-                digestiveStyles.timeOptionText,
-                selectedTime === time && digestiveStyles.timeOptionTextActive
-              ]}>
-                {time === 'morning' ? 'Morning' : 'Evening'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* View Toggle */}
-        <View style={digestiveStyles.viewToggle}>
-          <TouchableOpacity
-            style={[
-              digestiveStyles.viewButton,
-              viewMode === 'grid' ? digestiveStyles.viewButtonActive : digestiveStyles.viewButtonInactive
-            ]}
-            onPress={() => setViewMode('grid')}
-          >
-            <Text style={[
-              digestiveStyles.viewButtonText,
-              viewMode === 'grid' ? digestiveStyles.viewButtonTextActive : digestiveStyles.viewButtonTextInactive
-            ]}>
-              Grid
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              digestiveStyles.viewButton,
-              viewMode === 'feed' ? digestiveStyles.viewButtonActive : digestiveStyles.viewButtonInactive
-            ]}
-            onPress={() => setViewMode('feed')}
-          >
-            <Text style={[
-              digestiveStyles.viewButtonText,
-              viewMode === 'feed' ? digestiveStyles.viewButtonTextActive : digestiveStyles.viewButtonTextInactive
-            ]}>
-              Feed
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Add Photo Card */}
-        <View style={digestiveStyles.addPhotoCard}>
-          <TouchableOpacity style={digestiveStyles.addPhotoButton} onPress={takePicture}>
-            <Ionicons name="camera" size={32} color="#666" />
-            <Text style={digestiveStyles.addPhotoText}>
-              Take {selectedTime} belly photo{'\n'}for digestive tracking
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={digestiveStyles.addPhotoButton} onPress={selectFromLibrary}>
-            <Ionicons name="images" size={24} color="#666" />
-            <Text style={[digestiveStyles.addPhotoText, { fontSize: 14, marginTop: 4 }]}>
-              or choose from library
-            </Text>
-          </TouchableOpacity>
-        </View>
 
         {/* Content View */}
         {viewMode === 'grid' ? (
           /* Grid View */
           <View style={digestiveStyles.gridContainer}>
             {photos.map((photo) => (
-              <TouchableOpacity key={photo.id} style={digestiveStyles.gridItem}>
-                <Image source={{ uri: photo.uri }} style={digestiveStyles.gridPhoto} />
-                <View style={[
-                  digestiveStyles.gridTimeBadge,
-                  photo.time === 'morning' ? digestiveStyles.gridTimeBadgeMorning : digestiveStyles.gridTimeBadgeEvening
-                ]}>
-                  <Text style={digestiveStyles.gridTimeBadgeText}>
-                    {photo.time === 'morning' ? 'AM' : 'PM'}
-                  </Text>
+              <View key={photo.id} style={digestiveStyles.gridItem}>
+                <View style={digestiveStyles.gridPhotoContainer}>
+                  <Image 
+                    source={{ uri: photo.uri }} 
+                    style={digestiveStyles.gridPhoto}
+                    resizeMode="cover"
+                  />
+                  <View style={[
+                    digestiveStyles.gridTimeBadge,
+                    photo.time === 'morning' ? digestiveStyles.gridTimeBadgeMorning : digestiveStyles.gridTimeBadgeEvening
+                  ]}>
+                    <Text style={digestiveStyles.gridTimeBadgeText}>
+                      {photo.time === 'morning' ? 'AM' : 'PM'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={digestiveStyles.deleteButton}
+                    onPress={() => deletePhoto(photo.id)}
+                  >
+                    <Ionicons name="close-circle" size={16} color="rgba(239, 68, 68, 0.9)" />
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity 
-                  style={digestiveStyles.deleteButton}
-                  onPress={() => deletePhoto(photo.id)}
-                >
-                  <Ionicons name="close-circle" size={20} color="rgba(239, 68, 68, 0.8)" />
-                </TouchableOpacity>
-              </TouchableOpacity>
+              </View>
             ))}
             {photos.length === 0 && (
-              <View style={digestiveStyles.photoPlaceholder}>
+              <View style={[digestiveStyles.photoPlaceholder, { width: '100%', height: 200 }]}>
                 <Ionicons name="camera-outline" size={48} color="#6b7280" />
                 <Text style={digestiveStyles.placeholderText}>
                   No photos yet{'\n'}Start tracking your digestive health!
@@ -507,16 +623,39 @@ export default function DigestiveScreen() {
                   </View>
                 </View>
 
-                {/* Actions */}
-                <View style={digestiveStyles.actionsContainer}>
-                  <TouchableOpacity style={digestiveStyles.actionButton}>
-                    <Ionicons name="heart-outline" size={24} color="#6b7280" />
+                {/* Interactions */}
+                <View style={digestiveStyles.interactionBar}>
+                  <TouchableOpacity 
+                    style={[
+                      digestiveStyles.interactionButton,
+                      photo.isLiked && digestiveStyles.interactionButtonActive
+                    ]}
+                    onPress={() => toggleLike(photo.id)}
+                  >
+                    <Ionicons 
+                      name={photo.isLiked ? "heart" : "heart-outline"} 
+                      size={20} 
+                      color={photo.isLiked ? "white" : "#374151"} 
+                    />
+                    <Text style={[
+                      digestiveStyles.interactionText,
+                      photo.isLiked && digestiveStyles.interactionTextActive
+                    ]}>
+                      {photo.likes} {photo.likes === 1 ? 'Like' : 'Likes'}
+                    </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={digestiveStyles.actionButton}>
-                    <Ionicons name="chatbubble-outline" size={24} color="#6b7280" />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={digestiveStyles.actionButton}>
-                    <Ionicons name="share-outline" size={24} color="#6b7280" />
+                  
+                  <TouchableOpacity 
+                    style={digestiveStyles.interactionButton}
+                    onPress={() => {
+                      const comment = prompt("Add a comment:");
+                      if (comment) addComment(photo.id, comment);
+                    }}
+                  >
+                    <Ionicons name="chatbubble-outline" size={20} color="#374151" />
+                    <Text style={digestiveStyles.interactionText}>
+                      {photo.comments.length} {photo.comments.length === 1 ? 'Comment' : 'Comments'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
 
@@ -539,6 +678,13 @@ export default function DigestiveScreen() {
               </View>
             )}
           </View>
+        )}
+        
+        {/* Save Button */}
+        {photos.length > 0 && (
+          <TouchableOpacity style={digestiveStyles.saveButton}>
+            <Text style={digestiveStyles.saveButtonText}>Save Photos</Text>
+          </TouchableOpacity>
         )}
       </ScrollView>
     </SafeAreaView>

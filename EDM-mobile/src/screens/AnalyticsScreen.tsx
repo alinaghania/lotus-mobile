@@ -12,7 +12,7 @@ const SYMPTOMS = [
   'Concentration', 'Stress'
 ];
 
-type FilterType = 'Last 3 Days' | 'Last Week' | 'Last Month';
+type FilterType = 'Last 3 Days' | 'Last Week' | 'Last Month' | 'Custom';
 
 export default function AnalyticsScreen() {
   const { user } = useAuth();
@@ -114,7 +114,7 @@ export default function AnalyticsScreen() {
 
   const renderFilterButtons = () => (
     <View style={analyticsStyles.filterContainer}>
-      {(['Last 3 Days', 'Last Week', 'Last Month'] as FilterType[]).map(filter => (
+      {(['Last 3 Days', 'Last Week', 'Last Month', 'Custom'] as FilterType[]).map(filter => (
         <TouchableOpacity
           key={filter}
           onPress={() => setSelectedFilter(filter)}
@@ -152,12 +152,12 @@ export default function AnalyticsScreen() {
           <Text style={analyticsStyles.sectionTitle}>Overview</Text>
           <View style={analyticsStyles.kpiContainer}>
             {[
-              { label: 'Avg Sleep (h)', value: kpis.avgSleep.toFixed(1) },
-              { label: 'Data Quality (%)', value: kpis.dataCompleteness.toString() },
-              { label: 'Avg Sport (min)', value: kpis.avgSportMin.toFixed(0) },
-              { label: 'Avg Symptoms/day', value: kpis.avgSymptoms.toFixed(1) }
+              { label: 'Avg Sleep (h)', value: kpis.avgSleep.toFixed(1), style: analyticsStyles.kpiCardSleep },
+              { label: 'Data Quality (%)', value: kpis.dataCompleteness.toString(), style: analyticsStyles.kpiCardQuality },
+              { label: 'Avg Sport (min)', value: kpis.avgSportMin.toFixed(0), style: analyticsStyles.kpiCardSport },
+              { label: 'Avg Symptoms/day', value: kpis.avgSymptoms.toFixed(1), style: analyticsStyles.kpiCardSymptoms }
             ].map((card, idx) => (
-              <View key={card.label} style={analyticsStyles.kpiCard}>
+              <View key={card.label} style={[analyticsStyles.kpiCard, card.style]}>
                 <Text style={analyticsStyles.kpiLabel}>{card.label}</Text>
                 <Text style={analyticsStyles.kpiValue}>{card.value}</Text>
               </View>

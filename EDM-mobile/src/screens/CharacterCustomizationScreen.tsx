@@ -471,31 +471,40 @@ export default function CharacterCustomizationScreen() {
               <View style={characterStyles.optionsSection}>
                 <Text style={characterStyles.optionsSectionTitle}>Free Options</Text>
                 <View style={characterStyles.optionsContainer}>
-                  {filteredStep.options.map((option) => (
-                    <TouchableOpacity
-                      key={option}
-                      onPress={() => handleOptionClick(option)}
-                      style={[
-                        characterStyles.optionButton,
-                        (character as any)[filteredStep.key] === option
-                          ? characterStyles.optionButtonSelected
-                          : characterStyles.optionButtonDefault
-                      ]}
-                    >
-                      {filteredStep.type === 'color' ? (
-                        <View style={[characterStyles.colorOption, { backgroundColor: option }]} />
-                      ) : (
-                        <Text style={[
-                          characterStyles.optionText,
-                          (character as any)[filteredStep.key] === option 
-                            ? characterStyles.optionTextSelected 
-                            : characterStyles.optionTextDefault
-                        ]}>
-                          {option}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  ))}
+                                      {filteredStep.options.map((option) => (
+                      <TouchableOpacity
+                        key={option}
+                        onPress={() => handleOptionClick(option)}
+                        style={[
+                          characterStyles.optionButton,
+                          (character as any)[filteredStep.key] === option
+                            ? characterStyles.optionButtonSelected
+                            : characterStyles.optionButtonDefault,
+                          filteredStep.type === 'color' 
+                            ? { backgroundColor: option, borderColor: (character as any)[filteredStep.key] === option ? '#ec4899' : '#e5e7eb' }
+                            : undefined
+                        ]}
+                      >
+                        {filteredStep.type === 'color' ? (
+                          // No inner view for colors, the whole button is the color
+                          null
+                        ) : (
+                          <Text style={[
+                            characterStyles.optionText,
+                            characterStyles.optionTextDefault // Always use default text style
+                          ]}>
+                            {option}
+                          </Text>
+                        )}
+                        
+                        {/* Selected indicator */}
+                        {(character as any)[filteredStep.key] === option && (
+                          <View style={characterStyles.selectedIndicator}>
+                            <Text style={characterStyles.selectedIndicatorText}>✓</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    ))}
                 </View>
               </View>
               
@@ -515,19 +524,16 @@ export default function CharacterCustomizationScreen() {
                       return (
                         <View key={option.value} style={characterStyles.premiumOptionContainer}>
                           <TouchableOpacity
-                            onPress={() => handlePremiumClick(option)}
+                            onPress={() => handlePremiumClick(option)} // Preview with popup
                             style={[
                               characterStyles.optionButton,
                               isSelected
                                 ? characterStyles.optionButtonSelected
-                                : isPurchased
-                                ? characterStyles.optionButtonPurchased
-                                : canAfford
-                                ? characterStyles.optionButtonAffordable
-                                : characterStyles.optionButtonUnaffordable,
-                              filteredStep.type === 'color' ? { backgroundColor: option.value } : undefined
+                                : characterStyles.optionButtonDefault,
+                              filteredStep.type === 'color' 
+                                ? { backgroundColor: option.value } 
+                                : undefined
                             ]}
-                            disabled={!canAfford && !isPurchased}
                           >
                             {filteredStep.type === 'color' ? (
                               <View style={characterStyles.colorOption} />
@@ -541,22 +547,24 @@ export default function CharacterCustomizationScreen() {
                             )}
                           </TouchableOpacity>
                           
-                          {/* Status badge */}
-                          <View style={[
-                            characterStyles.statusBadge,
-                            isPurchased ? characterStyles.statusBadgePurchased : characterStyles.statusBadgeDefault
-                          ]}>
-                            <Text style={characterStyles.statusBadgeText}>
-                              {isPurchased ? '✓' : 'PREM'}
-                            </Text>
+                          {/* Diamond badge */}
+                          <View style={characterStyles.diamondBadge}>
+                            <Ionicons 
+                              name="diamond" 
+                              size={16} 
+                              color={canAfford ? "#d97706" : "#9ca3af"} 
+                            />
                           </View>
                           
                           {/* Price label */}
-                          {!isPurchased && (
-                            <View style={characterStyles.priceLabel}>
-                              <Text style={characterStyles.priceLabelText}>{option.cost} E</Text>
-                            </View>
-                          )}
+                          <View style={characterStyles.priceLabel}>
+                            <Text style={[
+                              characterStyles.priceLabelText,
+                              canAfford ? characterStyles.priceLabelAffordable : characterStyles.priceLabelUnaffordable
+                            ]}>
+                              {option.cost} E
+                            </Text>
+                          </View>
                         </View>
                       );
                     })}

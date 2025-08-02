@@ -15,6 +15,7 @@ import TrackingScreen from './src/screens/TrackingScreen';
 import AnalyticsScreen from './src/screens/AnalyticsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import CharacterCustomizationScreen from './src/screens/CharacterCustomizationScreen';
+import DigestiveScreen from './src/screens/DigestiveScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -84,6 +85,14 @@ export default function App() {
               component={CharacterCustomizationScreen}
               options={{
                 title: 'Customize Your Lotus',
+                headerBackTitle: 'Back',
+              }}
+            />
+            <Stack.Screen
+              name="DigestiveScreen"
+              component={DigestiveScreen}
+              options={{
+                title: 'Digestive Tracker',
                 headerBackTitle: 'Back',
               }}
             />

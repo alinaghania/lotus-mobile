@@ -91,7 +91,7 @@ export const characterStyles = StyleSheet.create({
     marginBottom: 24,
   },
   progressBar: {
-    backgroundColor: '#111827',
+    backgroundColor: '#10b981', // Green progress bar
     height: 8,
     borderRadius: 4,
   },
@@ -173,8 +173,25 @@ export const characterStyles = StyleSheet.create({
     flex: 0,
   },
   optionButtonSelected: {
-    borderColor: '#111827',
-    backgroundColor: '#111827',
+    borderColor: '#ec4899', // Rose pink border
+    borderWidth: 3,
+    backgroundColor: 'transparent',
+    position: 'relative',
+  },
+  selectedIndicator: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#ec4899',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    zIndex: 10,
+  },
+  selectedIndicatorText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   optionButtonDefault: {
     borderColor: '#e5e7eb',
@@ -210,36 +227,31 @@ export const characterStyles = StyleSheet.create({
   // Premium Option Container
   premiumOptionContainer: {
     position: 'relative',
+    marginBottom: 20, // Space for price label
   },
-  statusBadge: {
+  diamondBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  statusBadgePurchased: {
-    backgroundColor: '#10b981',
-  },
-  statusBadgeDefault: {
-    backgroundColor: '#000',
-  },
-  statusBadgeText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: 'bold',
+    top: 6,
+    right: 6,
+    zIndex: 10,
   },
   priceLabel: {
     position: 'absolute',
-    bottom: -8,
-    left: '50%',
-    transform: [{ translateX: -15 }],
+    bottom: -18,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
   priceLabelText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: 'bold',
-    color: '#d97706',
+    textAlign: 'center',
+  },
+  priceLabelAffordable: {
+    color: '#d97706', // Gold for affordable
+  },
+  priceLabelUnaffordable: {
+    color: '#9ca3af', // Gray for unaffordable
   },
 
   // Navigation

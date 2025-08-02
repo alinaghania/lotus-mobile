@@ -180,7 +180,7 @@ export default function HomeScreen() {
     ];
   };
 
-  // Load data on component mount and when screen comes into focus
+  // Load data on component mount and when selectedDate changes
   useEffect(() => {
     const loadData = async () => {
       const savedCharacter = await loadSavedCharacter();
@@ -188,7 +188,7 @@ export default function HomeScreen() {
       
       if (user) {
         try {
-          const date = new Date().toISOString().split('T')[0];
+          const date = selectedDate.toISOString().split('T')[0];
           const record = await trackingService.getTrackingByDate(user.id, date);
           setDailyRecord(record);
           
@@ -204,7 +204,7 @@ export default function HomeScreen() {
     };
     
     loadData();
-  }, [user]);
+  }, [user, selectedDate]);
 
   // Add focus listener to reload data when returning from tracking
   useEffect(() => {
@@ -214,7 +214,7 @@ export default function HomeScreen() {
       
       if (user) {
         try {
-          const date = new Date().toISOString().split('T')[0];
+          const date = selectedDate.toISOString().split('T')[0];
           const record = await trackingService.getTrackingByDate(user.id, date);
           setDailyRecord(record);
           
@@ -228,14 +228,18 @@ export default function HomeScreen() {
     });
 
     return unsubscribe;
-  }, [navigation, user]);
+  }, [navigation, user, selectedDate]);
 
   const todayKey = selectedDate.toLocaleDateString('sv-SE');
   const markedDates = [todayKey];
 
-  // Navigate to specific tracking tab
+  // Navigate to specific tracking tab or digestive
   const navigateToTracking = (tab: string) => {
-    navigation.navigate('Tracking' as never);
+    if (tab === 'digestive') {
+      navigation.navigate('DigestiveScreen' as never);
+    } else {
+      navigation.navigate('Tracking' as never);
+    }
   };
 
   // Simple progress calculation: completed activities / total activities
@@ -358,6 +362,9 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Espace */}
+          <View style={{ height: 16 }} />
+
           {/* Simple Daily Progress */}
           <View style={styles.card}>
             <View style={styles.progressHeader}>
@@ -386,24 +393,56 @@ export default function HomeScreen() {
               <View style={styles.quickActionsRow}>
                 <TouchableOpacity
                   onPress={() => navigateToTracking('meals')}
-                  style={[styles.quickActionButton, styles.quickActionGreen]}
+                  style={[styles.quickActionButton, styles.quickActionYellow]}
                 >
-                  <Text style={[styles.quickActionText, styles.quickActionTextGreen]}>Log Meals</Text>
+                  <Text style={{ fontSize: 20 }}>🍽️</Text>
+                  <Text style={[styles.quickActionText, styles.quickActionTextYellow]}>Log Meals</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => navigateToTracking('symptoms')}
-                  style={[styles.quickActionButton, styles.quickActionRed]}
+                  style={[styles.quickActionButton, styles.quickActionPurple]}
                 >
-                  <Text style={[styles.quickActionText, styles.quickActionTextRed]}>Add Symptoms</Text>
+                  <Text style={{ fontSize: 20 }}>🩺</Text>
+                  <Text style={[styles.quickActionText, styles.quickActionTextPurple]}>Add Symptoms</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => navigateToTracking('digestive')}
                   style={[styles.quickActionButton, styles.quickActionBlue]}
                 >
+                  <Text style={{ fontSize: 20 }}>📸</Text>
                   <Text style={[styles.quickActionText, styles.quickActionTextBlue]}>Take Photos</Text>
                 </TouchableOpacity>
               </View>
             </View>
+          </View>
+
+          {/* Your Lotus Character - Glamour Display */}
+          <View style={styles.lotusCardGlamour}>
+            <Text style={styles.characterTitle}>Your Lotus</Text>
+            <Text style={styles.levelText}>Level {character.level}</Text>
+            
+            {/* Lotus + Endolots Section */}
+            <View style={styles.lotusSection}>
+              {/* Large Lotus in Center */}
+              <View style={styles.lotusDisplay}>
+                <DetailedCharacter character={character} size={240} />
+              </View>
+              
+              {/* Endolots Display */}
+              <View style={styles.endolotsDisplay}>
+                <Ionicons name="diamond" size={20} color="#d97706" />
+                <Text style={styles.endolotsNumber}>{character.endolots}</Text>
+                <Text style={styles.endolotsLabel}>Endolots</Text>
+              </View>
+            </View>
+            
+            {/* Customize Button */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('CharacterCustomization' as never)}
+              style={styles.customizeButtonGlamour}
+            >
+              <Text style={styles.customizeButtonTextGlamour}>Customize Your Lotus</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Today's Tasks */}
@@ -479,34 +518,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Your Lotus Character - Large Display */}
-          <View style={styles.card}>
-            <View style={styles.characterCard}>
-              <View style={styles.characterInfo}>
-                <Text style={styles.characterTitle}>Your Lotus</Text>
-                <Text style={styles.levelText}>Level {character.level}</Text>
-                
-                <View>
-                  <View style={styles.statRow}>
-                    <Ionicons name="diamond" size={16} color="#d97706" />
-                    <Text style={styles.statText}>{character.endolots} Endolots</Text>
-                  </View>
-                  <View style={styles.statRow}>
-                    <Ionicons name="heart" size={16} color="#ef4444" />
-                    <Text style={styles.statText}>{character.healthPoints} HP</Text>
-                  </View>
-                  <View style={styles.statRow}>
-                    <Ionicons name="flame" size={16} color="#f97316" />
-                    <Text style={styles.statText}>{streak} day streak</Text>
-                  </View>
-                </View>
-              </View>
-              
-              <View style={styles.characterDisplay}>
-                <DetailedCharacter character={character} size={180} />
-              </View>
-            </View>
-          </View>
+
         </View>
       </ScrollView>
 

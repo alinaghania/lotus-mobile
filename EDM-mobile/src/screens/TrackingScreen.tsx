@@ -7,7 +7,7 @@ import { trackingService } from '../services/trackingService';
 import { DailyRecord, MealData, TrackingProgress } from '../types/tracking';
 import MultiSelect from '../components/MultiSelect';
 import { mealOptions, snackOptions, drinkTypes, sportActivities } from '../constants/meals';
-import DigestiveScreen from './DigestiveScreen';
+
 import { trackingStyles } from '../styles/trackingStyles';
 
 const SYMPTOMS = [
@@ -16,7 +16,7 @@ const SYMPTOMS = [
   'Concentration', 'Stress'
 ];
 
-type TabType = 'digestive' | 'meals' | 'sport' | 'cycle' | 'symptoms';
+type TabType = 'meals' | 'sport' | 'cycle' | 'symptoms';
 type MealSection = 'morning' | 'afternoon' | 'evening' | 'snack' | 'drinks';
 
 export default function TrackingScreen({ route }: { route?: { params?: { initialTab?: TabType } } }) {
@@ -195,7 +195,6 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
   const renderTabs = () => (
     <View style={trackingStyles.tabsContainer}>
       {[
-        { key: 'digestive', label: 'Digestive' },
         { key: 'meals', label: 'Meals' },
         { key: 'sport', label: 'Sport' },
         { key: 'cycle', label: 'Cycle' },
@@ -220,9 +219,7 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
     </View>
   );
 
-  const renderDigestiveTab = () => (
-    <DigestiveScreen />
-  );
+
 
   const renderSymptomsTab = () => (
     <View style={trackingStyles.contentCard}>
@@ -558,8 +555,6 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'digestive':
-        return renderDigestiveTab();
       case 'symptoms':
         return renderSymptomsTab();
       case 'meals':
