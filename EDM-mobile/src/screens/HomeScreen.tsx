@@ -405,12 +405,21 @@ export default function HomeScreen() {
                   <Text style={{ fontSize: 20 }}>🩺</Text>
                   <Text style={[styles.quickActionText, styles.quickActionTextPurple]}>Add Symptoms</Text>
                 </TouchableOpacity>
+              </View>
+              <View style={[styles.quickActionsRow, { marginTop: 8 }]}>
                 <TouchableOpacity
                   onPress={() => navigateToTracking('digestive')}
                   style={[styles.quickActionButton, styles.quickActionBlue]}
                 >
                   <Text style={{ fontSize: 20 }}>📸</Text>
                   <Text style={[styles.quickActionText, styles.quickActionTextBlue]}>Take Photos</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => navigateToTracking('sleep')}
+                  style={[styles.quickActionButton, styles.quickActionGreen]}
+                >
+                  <Text style={{ fontSize: 20 }}>😴</Text>
+                  <Text style={[styles.quickActionText, styles.quickActionTextGreen]}>Log Sleep</Text>
                 </TouchableOpacity>
               </View>
             </View>

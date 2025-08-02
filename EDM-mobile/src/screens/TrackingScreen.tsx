@@ -6,17 +6,42 @@ import { useAuth } from '../contexts/AuthContext';
 import { trackingService } from '../services/trackingService';
 import { DailyRecord, MealData, TrackingProgress } from '../types/tracking';
 import MultiSelect from '../components/MultiSelect';
-import { mealOptions, snackOptions, drinkTypes, sportActivities } from '../constants/meals';
+import { mealOptions, snackOptions, drinkTypes, sportActivities, weekDays } from '../constants/meals';
 
 import { trackingStyles } from '../styles/trackingStyles';
 
 const SYMPTOMS = [
-  'Headache', 'Fatigue', 'Bloating', 'Nausea', 'Joint Pain', 'Skin Issues',
-  'Mood Changes', 'Sleep Issues', 'Digestive Issues', 'Energy Levels',
-  'Concentration', 'Stress'
+  // Physical Symptoms
+  'Headache', 'Migraine', 'Fatigue', 'Dizziness', 'Nausea', 'Vomiting', 
+  'Fever', 'Chills', 'Body Aches', 'Joint Pain', 'Muscle Pain', 'Back Pain',
+  'Neck Pain', 'Chest Pain', 'Shortness of Breath',
+  
+  // Digestive Issues
+  'Bloating', 'Gas', 'Stomach Pain', 'Acid Reflux', 'Heartburn', 'Constipation',
+  'Diarrhea', 'Cramps', 'Loss of Appetite', 'Food Cravings',
+  
+  // Mental & Emotional
+  'Anxiety', 'Depression', 'Mood Swings', 'Irritability', 'Stress', 'Brain Fog',
+  'Concentration Issues', 'Memory Problems', 'Overwhelmed',
+  
+  // Energy & Sleep
+  'Low Energy', 'High Energy', 'Insomnia', 'Drowsiness', 'Restless Sleep',
+  'Night Sweats', 'Sleep Disturbances',
+  
+  // Skin & Appearance
+  'Acne', 'Dry Skin', 'Rash', 'Itching', 'Dark Circles', 'Puffy Eyes',
+  'Hair Loss', 'Brittle Nails',
+  
+  // Women's Health
+  'PMS', 'Menstrual Cramps', 'Breast Tenderness', 'Hot Flashes',
+  'Hormonal Changes',
+  
+  // Other
+  'Allergies', 'Congestion', 'Sore Throat', 'Cough', 'Swollen Lymph Nodes',
+  'Other'
 ];
 
-type TabType = 'meals' | 'sport' | 'cycle' | 'symptoms';
+type TabType = 'meals' | 'sport' | 'cycle' | 'symptoms' | 'sleep';
 type MealSection = 'morning' | 'afternoon' | 'evening' | 'snack' | 'drinks';
 
 export default function TrackingScreen({ route }: { route?: { params?: { initialTab?: TabType } } }) {
@@ -28,9 +53,20 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
 
   // Sport state
-  const [sportActivities, setSportActivities] = useState<string[]>([]);
+  const [selectedSports, setSelectedSports] = useState<string[]>([]);
   const [sportDurations, setSportDurations] = useState<Record<string, number>>({});
   const [sameSportRoutine, setSameSportRoutine] = useState(false);
+  const [routineDays, setRoutineDays] = useState<string[]>([]);
+  const [routineTime, setRoutineTime] = useState('');
+
+  // Sleep state
+  const [sleepData, setSleepData] = useState({
+    bedTime: '',
+    wakeTime: '',
+    sleepQuality: 0,
+    sleepDuration: 0
+  });
+  const [sameSleepRoutine, setSameSleepRoutine] = useState(false);
 
   // Cycle state
   const [hasPeriod, setHasPeriod] = useState<'yes' | 'no' | 'none' | ''>('');
@@ -198,7 +234,8 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
         { key: 'meals', label: 'Meals' },
         { key: 'sport', label: 'Sport' },
         { key: 'cycle', label: 'Cycle' },
-        { key: 'symptoms', label: 'Symptoms' }
+        { key: 'symptoms', label: 'Symptoms' },
+        { key: 'sleep', label: 'Sleep' }
       ].map(tab => (
         <TouchableOpacity
           key={tab.key}
@@ -231,28 +268,14 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
         Select any symptoms you're experiencing today
       </Text>
       
-      <View style={trackingStyles.symptomsContainer}>
-        {SYMPTOMS.map(symptom => (
-          <TouchableOpacity
-            key={symptom}
-            onPress={() => toggleSymptom(symptom)}
-            style={[
-              trackingStyles.symptomButton,
-              selectedSymptoms.includes(symptom) 
-                ? trackingStyles.symptomButtonSelected 
-                : trackingStyles.symptomButtonUnselected
-            ]}
-          >
-            <Text style={
-              selectedSymptoms.includes(symptom)
-                ? trackingStyles.symptomTextSelected
-                : trackingStyles.symptomTextUnselected
-            }>
-              {symptom}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <MultiSelect
+        label="Symptoms"
+        options={SYMPTOMS}
+        value={selectedSymptoms}
+        onChange={setSelectedSymptoms}
+        allowOther
+        category="symptoms"
+      />
 
       <TouchableOpacity
         onPress={handleSaveSymptoms}
@@ -467,34 +490,79 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
         </View>
       </View>
       
+      {/* Same Routine Toggle */}
+      <View style={trackingStyles.routineToggleContainer}>
+        <TouchableOpacity
+          onPress={() => setSameSportRoutine(!sameSportRoutine)}
+          style={trackingStyles.routineToggle}
+        >
+          <View style={[
+            trackingStyles.routineCheckbox,
+            sameSportRoutine ? trackingStyles.routineCheckboxSelected : trackingStyles.routineCheckboxUnselected
+          ]}>
+            {sameSportRoutine && <Ionicons name="checkmark" size={12} color="white" />}
+          </View>
+          <Text style={trackingStyles.routineToggleText}>Same routine</Text>
+        </TouchableOpacity>
+        {sameSportRoutine && (
+          <Text style={trackingStyles.routineHint}>Pre-filled from your saved routine</Text>
+        )}
+      </View>
+
       <MultiSelect
         label="Activity Type"
         options={sportActivities}
-        value={sportActivities}
-        onChange={setSportActivities}
+        value={selectedSports}
+        onChange={setSelectedSports}
         allowOther
+        category="sports"
       />
 
-      {/* Duration inputs */}
-      <View style={trackingStyles.sportActivitiesContainer}>
-        {sportActivities.map(activity => (
-          <View key={activity} style={trackingStyles.sportActivityRow}>
-            <View style={trackingStyles.sportActivityLabel}>
-              <Text style={trackingStyles.sportActivityLabelText}>{activity}</Text>
+      {/* Duration and Schedule */}
+      {selectedSports.length > 0 && (
+        <View style={trackingStyles.sportActivitiesContainer}>
+          {selectedSports.map(activity => (
+            <View key={activity} style={trackingStyles.sportActivityCard}>
+              <Text style={trackingStyles.sportActivityTitle}>{activity}</Text>
+              
+              <View style={trackingStyles.sportActivityRow}>
+                <Text style={trackingStyles.sportActivityLabel}>Duration (minutes):</Text>
+                <TextInput
+                  value={String(sportDurations[activity] || '')}
+                  onChangeText={(text) => {
+                    const duration = parseInt(text) || 0;
+                    setSportDurations(prev => ({ ...prev, [activity]: duration }));
+                  }}
+                  keyboardType="numeric"
+                  style={trackingStyles.sportActivityInput}
+                  placeholder="30"
+                />
+              </View>
+
+              {sameSportRoutine && (
+                <>
+                  <MultiSelect
+                    label="Days of the week"
+                    options={weekDays}
+                    value={routineDays}
+                    onChange={setRoutineDays}
+                  />
+                  
+                  <View style={trackingStyles.sportActivityRow}>
+                    <Text style={trackingStyles.sportActivityLabel}>Time:</Text>
+                    <TextInput
+                      value={routineTime}
+                      onChangeText={setRoutineTime}
+                      style={trackingStyles.sportActivityInput}
+                      placeholder="e.g., 18:00"
+                    />
+                  </View>
+                </>
+              )}
             </View>
-            <TextInput
-              value={String(sportDurations[activity] || '')}
-              onChangeText={(text) => {
-                const duration = parseInt(text) || 0;
-                setSportDurations(prev => ({ ...prev, [activity]: duration }));
-              }}
-              keyboardType="numeric"
-              style={trackingStyles.sportActivityInput}
-              placeholder="Duration (minutes)"
-            />
-          </View>
-        ))}
-      </View>
+          ))}
+        </View>
+      )}
 
       <TouchableOpacity
         onPress={handleSaveSport}
@@ -553,6 +621,96 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
     </View>
   );
 
+  const renderSleepTab = () => (
+    <View style={trackingStyles.contentCard}>
+      <View style={trackingStyles.contentHeader}>
+        <Ionicons name="moon-outline" size={24} color="#7c3aed" />
+        <Text style={trackingStyles.contentTitle}>Sleep Tracking</Text>
+        <View style={trackingStyles.optionalBadge}>
+          <Text style={trackingStyles.optionalBadgeText}>OPTIONAL</Text>
+        </View>
+      </View>
+      
+      {/* Same Routine Toggle */}
+      <View style={trackingStyles.routineToggleContainer}>
+        <TouchableOpacity
+          onPress={() => setSameSleepRoutine(!sameSleepRoutine)}
+          style={trackingStyles.routineToggle}
+        >
+          <View style={[
+            trackingStyles.routineCheckbox,
+            sameSleepRoutine ? trackingStyles.routineCheckboxSelected : trackingStyles.routineCheckboxUnselected
+          ]}>
+            {sameSleepRoutine && <Ionicons name="checkmark" size={12} color="white" />}
+          </View>
+          <Text style={trackingStyles.routineToggleText}>Same sleep routine</Text>
+        </TouchableOpacity>
+        {sameSleepRoutine && (
+          <Text style={trackingStyles.routineHint}>Pre-filled from your saved sleep schedule</Text>
+        )}
+      </View>
+
+      <View style={trackingStyles.sportActivityCard}>
+        <Text style={trackingStyles.sportActivityTitle}>Sleep Schedule</Text>
+        
+        <View style={trackingStyles.sportActivityRow}>
+          <Text style={trackingStyles.sportActivityLabel}>Bedtime:</Text>
+          <TextInput
+            value={sleepData.bedTime}
+            onChangeText={(text) => setSleepData(prev => ({ ...prev, bedTime: text }))}
+            style={trackingStyles.sportActivityInput}
+            placeholder="e.g., 23:00"
+          />
+        </View>
+
+        <View style={trackingStyles.sportActivityRow}>
+          <Text style={trackingStyles.sportActivityLabel}>Wake time:</Text>
+          <TextInput
+            value={sleepData.wakeTime}
+            onChangeText={(text) => setSleepData(prev => ({ ...prev, wakeTime: text }))}
+            style={trackingStyles.sportActivityInput}
+            placeholder="e.g., 07:00"
+          />
+        </View>
+
+        <View style={trackingStyles.sportActivityRow}>
+          <Text style={trackingStyles.sportActivityLabel}>Sleep quality (1-10):</Text>
+          <TextInput
+            value={String(sleepData.sleepQuality || '')}
+            onChangeText={(text) => {
+              const quality = parseInt(text) || 0;
+              setSleepData(prev => ({ ...prev, sleepQuality: Math.max(0, Math.min(10, quality)) }));
+            }}
+            keyboardType="numeric"
+            style={trackingStyles.sportActivityInput}
+            placeholder="8"
+          />
+        </View>
+
+        <View style={trackingStyles.sportActivityRow}>
+          <Text style={trackingStyles.sportActivityLabel}>Duration (hours):</Text>
+          <TextInput
+            value={String(sleepData.sleepDuration || '')}
+            onChangeText={(text) => {
+              const duration = parseFloat(text) || 0;
+              setSleepData(prev => ({ ...prev, sleepDuration: duration }));
+            }}
+            keyboardType="numeric"
+            style={trackingStyles.sportActivityInput}
+            placeholder="8"
+          />
+        </View>
+      </View>
+
+      <TouchableOpacity
+        onPress={() => console.log('Save sleep data')}
+        style={trackingStyles.saveButton}
+      >
+        <Text style={trackingStyles.saveButtonText}>Save Sleep Data</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   const renderContent = () => {
     switch (activeTab) {
       case 'symptoms':
@@ -563,6 +721,8 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
         return renderSportTab();
       case 'cycle':
         return renderCycleTab();
+      case 'sleep':
+        return renderSleepTab();
       default:
         return renderSymptomsTab();
     }

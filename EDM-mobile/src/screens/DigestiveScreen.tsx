@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, StyleSheet, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Image, StyleSheet, Dimensions, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 
@@ -369,10 +370,44 @@ const digestiveStyles = StyleSheet.create({
   },
 });
 
+const DIGESTIVE_PHOTOS_KEY = 'digestive_photos';
+
 export default function DigestiveScreen() {
   const [photos, setPhotos] = useState<DigestivePhoto[]>([]);
   const [selectedTime, setSelectedTime] = useState<'morning' | 'evening'>('morning');
   const [viewMode, setViewMode] = useState<'grid' | 'feed'>('grid');
+
+  // Load photos on component mount
+  useEffect(() => {
+    loadPhotos();
+  }, []);
+
+  const loadPhotos = async () => {
+    try {
+      const savedPhotos = await AsyncStorage.getItem(DIGESTIVE_PHOTOS_KEY);
+      if (savedPhotos) {
+        const parsedPhotos = JSON.parse(savedPhotos);
+        // Convert timestamp strings back to Date objects
+        const photosWithDates = parsedPhotos.map((photo: any) => ({
+          ...photo,
+          timestamp: new Date(photo.timestamp)
+        }));
+        setPhotos(photosWithDates);
+      }
+    } catch (error) {
+      console.error('Error loading photos:', error);
+    }
+  };
+
+  const savePhotos = async () => {
+    try {
+      await AsyncStorage.setItem(DIGESTIVE_PHOTOS_KEY, JSON.stringify(photos));
+      Alert.alert('Success', 'Photos saved successfully!');
+    } catch (error) {
+      console.error('Error saving photos:', error);
+      Alert.alert('Error', 'Failed to save photos');
+    }
+  };
 
   const takePicture = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -682,7 +717,7 @@ export default function DigestiveScreen() {
         
         {/* Save Button */}
         {photos.length > 0 && (
-          <TouchableOpacity style={digestiveStyles.saveButton}>
+          <TouchableOpacity style={digestiveStyles.saveButton} onPress={savePhotos}>
             <Text style={digestiveStyles.saveButtonText}>Save Photos</Text>
           </TouchableOpacity>
         )}

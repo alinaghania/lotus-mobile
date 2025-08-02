@@ -278,6 +278,10 @@ export const styles = StyleSheet.create({
     backgroundColor: '#ffffff', // White background
     borderColor: '#000000', // Black border
   },
+  quickActionGreen: {
+    backgroundColor: '#ffffff', // White background
+    borderColor: '#000000', // Black border
+  },
   quickActionText: {
     fontSize: 13,
     fontWeight: '600',
@@ -292,6 +296,9 @@ export const styles = StyleSheet.create({
   },
   quickActionTextBlue: {
     color: '#2563eb', // Dark blue text
+  },
+  quickActionTextGreen: {
+    color: '#059669', // Emerald green text
   },
   tasksHeader: {
     flexDirection: 'row',

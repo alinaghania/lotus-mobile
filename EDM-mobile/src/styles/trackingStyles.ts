@@ -415,6 +415,57 @@ export const trackingStyles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 16,
   },
+  sportActivityCard: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  sportActivityTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  
+  // Routine toggle styles
+  routineToggleContainer: {
+    marginBottom: 16,
+  },
+  routineToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  routineCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  routineCheckboxSelected: {
+    backgroundColor: '#10b981',
+    borderColor: '#10b981',
+  },
+  routineCheckboxUnselected: {
+    borderColor: '#d1d5db',
+  },
+  routineToggleText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  routineHint: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontStyle: 'italic',
+    marginLeft: 32,
+  },
 
   // Cycle Options Styles
   cycleOptionsContainer: {
