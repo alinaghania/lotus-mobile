@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Lotus",
+    "slug": "lotus-health",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "jsEngine": "jsc",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lotus.health",
+      "jsEngine": "jsc"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.lotus.health",
+      "jsEngine": "jsc"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "sdkVersion": "53.0.0",
+    "plugins": []
+  }
+}

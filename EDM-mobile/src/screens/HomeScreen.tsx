@@ -1,0 +1,526 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Modal, Alert, Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../contexts/AuthContext';
+import { trackingService } from '../services/trackingService';
+import { Character } from '../types/character';
+import { TrackingProgress, DailyRecord, MealData } from '../types/tracking';
+import DetailedCharacter from '../components/DetailedCharacter';
+import { styles } from '../styles/homeStyles';
+
+interface Task {
+  id: string;
+  text: string;
+  completed: boolean;
+  progress: number;
+  required: boolean;
+}
+
+const loadSavedCharacter = async (): Promise<Character> => {
+  try {
+    const characterData = await AsyncStorage.getItem('savedCharacter');
+    if (characterData) {
+      const savedCharacter = JSON.parse(characterData);
+      console.log('Loaded character from storage:', savedCharacter);
+      // Ensure all required properties exist (backwards compatibility + AVATAAARS support)
+      return {
+        ...savedCharacter,
+        eyebrowColor: savedCharacter.eyebrowColor || savedCharacter.hairColor || '#8B4513',
+        eyebrows: savedCharacter.eyebrows || 'natural',
+        eyes: savedCharacter.eyes || 'happy',
+        mouth: savedCharacter.mouth || 'smile',
+        shoes: savedCharacter.shoes || 'sneakers',
+        accessory: savedCharacter.accessory || 'none',
+        accessories: savedCharacter.accessories || 'none',
+        outfitColor: savedCharacter.outfitColor || '#93c5fd',
+        outfitGraphic: savedCharacter.outfitGraphic || 'none',
+        accessoryColor: savedCharacter.accessoryColor || '#000000',
+        endolots: savedCharacter.endolots || 150,
+        healthPoints: savedCharacter.healthPoints || 100
+      };
+    }
+  } catch (error) {
+    console.error('Failed to load character:', error);
+  }
+  
+  // Return default AVATAAARS character if no saved character found
+  return {
+    skin: '#F1C3A7',
+    hair: 'long',
+    hairColor: '#8B4513',
+    eyebrowColor: '#8B4513',
+    eyebrows: 'natural',
+    eyes: 'happy',
+    mouth: 'smile',
+    outfit: 'tshirt',
+    outfitColor: '#93c5fd',
+    outfitGraphic: 'none',
+    shoes: 'sneakers',
+    accessory: 'none',
+    accessories: 'none',
+    accessoryColor: '#000000',
+    level: 1,
+    endolots: 150,
+    healthPoints: 100
+  };
+};
+
+export default function HomeScreen() {
+  const { user } = useAuth();
+  const navigation = useNavigation();
+  const [character, setCharacter] = useState<Character>({
+    skin: '#F1C3A7',
+    hair: 'long',
+    hairColor: '#8B4513',
+    eyebrowColor: '#8B4513',
+    eyes: '#8B4513',
+    outfit: 'tshirt',
+    shoes: 'sneakers',
+    accessory: 'none',
+    level: 1,
+    endolots: 150,
+    healthPoints: 100
+  });
+  const [streak, setStreak] = useState(0);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [dailyRecord, setDailyRecord] = useState<DailyRecord | null>(null);
+  const [trackingProgress, setTrackingProgress] = useState<TrackingProgress>({
+    meals: 0,
+    symptoms: 0,
+    digestive: 0,
+    optional: {
+      sport: 0,
+      cycle: 0,
+      drinks: 0,
+      snacks: 0
+    }
+  });
+
+  // Calculate tracking progress from data
+  const calculateTrackingProgress = (record: DailyRecord | null): TrackingProgress => {
+    const progress: TrackingProgress = {
+      meals: 0,
+      symptoms: 0,
+      digestive: 0,
+      optional: {
+        sport: 0,
+        cycle: 0,
+        drinks: 0,
+        snacks: 0
+      }
+    };
+
+    if (!record) return progress;
+
+    // Required meals (20% each = 60% total)
+    if (record.meals) {
+      const requiredMeals = ['morning', 'afternoon', 'evening'];
+      const completedMeals = requiredMeals.filter(meal => {
+        const value = record.meals![meal as keyof MealData] as string;
+        return value && (value === 'Fasting' || value.trim() !== '');
+      });
+      progress.meals = (completedMeals.length / requiredMeals.length) * 60;
+    }
+
+    // Symptoms (20%)
+    progress.symptoms = (record.symptoms && record.symptoms.length > 0) ? 20 : 0;
+
+    // Digestive photos (20%)
+    if (record.digestive?.photos) {
+      const photos = record.digestive.photos;
+      const photoCount = (photos.morning ? 1 : 0) + (photos.evening ? 1 : 0);
+      progress.digestive = (photoCount / 2) * 20;
+    }
+
+    // Optional items
+    progress.optional.sport = record.activity ? 100 : 0;
+    progress.optional.cycle = record.period ? 100 : 0;
+    progress.optional.drinks = (record.hydration && record.hydration.count > 0) ? 100 : 0;
+    progress.optional.snacks = (record.meals?.snack && record.meals.snack.trim() !== '') ? 100 : 0;
+
+    return progress;
+  };
+
+  // Generate tasks based on tracking progress
+  const generateTasksFromProgress = (progress: TrackingProgress): Task[] => {
+    return [
+      {
+        id: '1',
+        text: 'Complete required meals (Morning, Afternoon, Evening)',
+        completed: progress.meals >= 60,
+        progress: progress.meals,
+        required: true
+      },
+      {
+        id: '2', 
+        text: 'Track your symptoms',
+        completed: progress.symptoms >= 20,
+        progress: progress.symptoms,
+        required: true
+      },
+      {
+        id: '3',
+        text: 'Take digestive photos (Morning & Evening)',
+        completed: progress.digestive >= 20,
+        progress: progress.digestive,
+        required: true
+      },
+      {
+        id: '4',
+        text: 'Log physical activity',
+        completed: progress.optional.sport >= 100,
+        progress: progress.optional.sport,
+        required: false
+      }
+    ];
+  };
+
+  // Load data on component mount and when screen comes into focus
+  useEffect(() => {
+    const loadData = async () => {
+      const savedCharacter = await loadSavedCharacter();
+      setCharacter(savedCharacter);
+      
+      if (user) {
+        try {
+          const date = new Date().toISOString().split('T')[0];
+          const record = await trackingService.getTrackingByDate(user.id, date);
+          setDailyRecord(record);
+          
+          const progress = calculateTrackingProgress(record);
+          setTrackingProgress(progress);
+          setTasks(generateTasksFromProgress(progress));
+        } catch (error) {
+          console.error('Error loading tracking data:', error);
+          // Set empty progress and tasks if there's an error
+          setTasks(generateTasksFromProgress(trackingProgress));
+        }
+      }
+    };
+    
+    loadData();
+  }, [user]);
+
+  // Add focus listener to reload data when returning from tracking
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', async () => {
+      const savedCharacter = await loadSavedCharacter();
+      setCharacter(savedCharacter);
+      
+      if (user) {
+        try {
+          const date = new Date().toISOString().split('T')[0];
+          const record = await trackingService.getTrackingByDate(user.id, date);
+          setDailyRecord(record);
+          
+          const progress = calculateTrackingProgress(record);
+          setTrackingProgress(progress);
+          setTasks(generateTasksFromProgress(progress));
+        } catch (error) {
+          console.error('Error loading tracking data:', error);
+        }
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, user]);
+
+  const todayKey = selectedDate.toLocaleDateString('sv-SE');
+  const markedDates = [todayKey];
+
+  // Navigate to specific tracking tab
+  const navigateToTracking = (tab: string) => {
+    navigation.navigate('Tracking' as never);
+  };
+
+  // Simple progress calculation: completed activities / total activities
+  const completedActivities = [
+    trackingProgress.meals > 0, // Meals tracked
+    trackingProgress.symptoms > 0, // Symptoms tracked
+    trackingProgress.digestive > 0, // Photos taken
+    trackingProgress.optional?.sport > 0, // Sport activity
+    trackingProgress.optional?.cycle > 0, // Cycle tracked
+  ].filter(Boolean).length;
+  
+  const totalActivities = 5;
+  const simpleProgress = Math.round((completedActivities / totalActivities) * 100);
+  
+  const completedRequiredTasks = tasks.filter(task => task.required && task.completed).length;
+  const totalRequiredTasks = tasks.filter(task => task.required).length;
+
+  // Simple calendar grid
+  const renderCalendar = () => {
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    const firstDay = new Date(currentYear, currentMonth, 1);
+    const lastDay = new Date(currentYear, currentMonth + 1, 0);
+    const startDate = new Date(firstDay);
+    startDate.setDate(startDate.getDate() - firstDay.getDay());
+    
+    const days = [];
+    const current = new Date(startDate);
+    
+    while (current <= lastDay || current.getDay() !== 0) {
+      days.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    }
+
+    return (
+      <View style={styles.calendarCard}>
+        <View style={styles.calendarHeader}>
+          <Text style={styles.calendarTitle}>
+            {today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </Text>
+          <TouchableOpacity onPress={() => setShowCalendar(false)}>
+            <Ionicons name="close" size={24} color="#666" />
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.weekdaysRow}>
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+            <View key={day} style={styles.weekdayCell}>
+              <Text style={styles.weekdayText}>{day}</Text>
+            </View>
+          ))}
+        </View>
+        
+        <View style={styles.daysContainer}>
+          {days.map((day, index) => {
+            const isSelected = day.toDateString() === selectedDate.toDateString();
+            const isToday = day.toDateString() === today.toDateString();
+            const isCurrentMonth = day.getMonth() === currentMonth;
+            
+            return (
+              <TouchableOpacity
+                key={index}
+                onPress={() => {
+                  setSelectedDate(day);
+                  setShowCalendar(false);
+                }}
+                style={[
+                  styles.dayCell,
+                  isSelected && styles.selectedDay
+                ]}
+              >
+                <Text style={[
+                  styles.dayText,
+                  isSelected ? styles.selectedDayText :
+                  isToday ? styles.todayText :
+                  isCurrentMonth ? styles.currentMonthText : styles.otherMonthText
+                ]}>
+                  {day.getDate()}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        <View style={styles.padding}>
+          {/* Header */}
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.headerText}>Welcome back, Lotus!</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('CharacterCustomization' as never)}
+              style={styles.settingsButton}
+            >
+              <Ionicons name="settings-outline" size={24} color="#d97706" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Date Selector */}
+          <View style={styles.dateSelector}>
+            <TouchableOpacity 
+              onPress={() => setShowCalendar(!showCalendar)}
+              style={styles.dateSelectorButton}
+            >
+              <Text style={styles.dateSelectorText}>
+                {selectedDate.toLocaleDateString('en-US', { 
+                  weekday: 'long', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </Text>
+              <Ionicons name="calendar-outline" size={20} color="#6b7280" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Simple Daily Progress */}
+          <View style={styles.card}>
+            <View style={styles.progressHeader}>
+              <Text style={styles.progressTitle}>Daily Progress</Text>
+              <Text style={styles.progressPercentage}>{simpleProgress}%</Text>
+            </View>
+            
+            {/* Main Progress Bar */}
+            <View style={styles.progressBarContainer}>
+              <View 
+                style={[
+                  styles.progressBar,
+                  { width: `${Math.min(simpleProgress, 100)}%` }
+                ]}
+              />
+            </View>
+
+            <View style={styles.progressSummary}>
+              <Text style={styles.progressSummaryText}>
+                {completedActivities} of {totalActivities} activities completed
+              </Text>
+            </View>
+
+            {/* Quick Actions */}
+            <View style={styles.quickActionsContainer}>
+              <View style={styles.quickActionsRow}>
+                <TouchableOpacity
+                  onPress={() => navigateToTracking('meals')}
+                  style={[styles.quickActionButton, styles.quickActionGreen]}
+                >
+                  <Text style={[styles.quickActionText, styles.quickActionTextGreen]}>Log Meals</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => navigateToTracking('symptoms')}
+                  style={[styles.quickActionButton, styles.quickActionRed]}
+                >
+                  <Text style={[styles.quickActionText, styles.quickActionTextRed]}>Add Symptoms</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => navigateToTracking('digestive')}
+                  style={[styles.quickActionButton, styles.quickActionBlue]}
+                >
+                  <Text style={[styles.quickActionText, styles.quickActionTextBlue]}>Take Photos</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          {/* Today's Tasks */}
+          <View style={styles.card}>
+            <View style={styles.tasksHeader}>
+              <Text style={styles.progressTitle}>Today's Tasks</Text>
+              <View style={styles.tasksBadge}>
+                <Text style={styles.tasksBadgeText}>
+                  {completedRequiredTasks}/{totalRequiredTasks} required
+                </Text>
+              </View>
+            </View>
+            
+            <View>
+              {tasks.map(task => (
+                <View
+                  key={task.id}
+                  style={[
+                    styles.taskItem,
+                    task.completed 
+                      ? styles.taskCompleted
+                      : task.required 
+                      ? styles.taskRequired 
+                      : styles.taskOptional
+                  ]}
+                >
+                  <View style={styles.taskRow}>
+                    <View style={styles.taskContent}>
+                      <Ionicons 
+                        name={task.completed ? "checkmark-circle" : "ellipse-outline"} 
+                        size={20} 
+                        color={task.completed ? "#10b981" : "#9ca3af"} 
+                      />
+                      <Text style={[
+                        styles.taskText,
+                        task.completed ? styles.taskTextCompleted : styles.taskTextDefault
+                      ]}>
+                        {task.text}
+                      </Text>
+                      {task.required && (
+                        <View style={styles.requiredBadge}>
+                          <Text style={styles.requiredBadgeText}>REQUIRED</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                  
+                  {/* Progress bar for each task */}
+                  <View style={styles.taskProgressBar}>
+                    <View 
+                      style={[
+                        styles.taskProgressFill,
+                        { width: `${Math.min(task.progress, 100)}%` },
+                        task.completed ? styles.taskProgressCompleted : 
+                        task.required ? styles.taskProgressRequired : styles.taskProgressOptional
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.taskProgressText}>
+                    {Math.round(task.progress)}% complete
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Tracking' as never)}
+              style={styles.continueButton}
+            >
+              <Text style={styles.continueButtonText}>
+                Continue Tracking
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Your Lotus Character - Large Display */}
+          <View style={styles.card}>
+            <View style={styles.characterCard}>
+              <View style={styles.characterInfo}>
+                <Text style={styles.characterTitle}>Your Lotus</Text>
+                <Text style={styles.levelText}>Level {character.level}</Text>
+                
+                <View>
+                  <View style={styles.statRow}>
+                    <Ionicons name="diamond" size={16} color="#d97706" />
+                    <Text style={styles.statText}>{character.endolots} Endolots</Text>
+                  </View>
+                  <View style={styles.statRow}>
+                    <Ionicons name="heart" size={16} color="#ef4444" />
+                    <Text style={styles.statText}>{character.healthPoints} HP</Text>
+                  </View>
+                  <View style={styles.statRow}>
+                    <Ionicons name="flame" size={16} color="#f97316" />
+                    <Text style={styles.statText}>{streak} day streak</Text>
+                  </View>
+                </View>
+              </View>
+              
+              <View style={styles.characterDisplay}>
+                <DetailedCharacter character={character} size={180} />
+              </View>
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Calendar Modal */}
+      <Modal
+        visible={showCalendar}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowCalendar(false)}
+      >
+        <View style={styles.modalContainer}>
+          {renderCalendar()}
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}
