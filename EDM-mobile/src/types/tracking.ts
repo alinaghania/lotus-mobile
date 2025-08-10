@@ -26,6 +26,7 @@ export interface DailyRecord {
     notes?: string;
   };
   activity?: string[]; // Array of activity names
+  activityMinutes?: number; // Total minutes of sport for the day (optional)
   sleep?: {
     bedTime: string;
     wakeTime: string;

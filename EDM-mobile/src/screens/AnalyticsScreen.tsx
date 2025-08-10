@@ -116,7 +116,7 @@ export default function AnalyticsScreen() {
 
       const { start, end } = selectedFilter === 'Custom' && customStart && customEnd
         ? { start: customStart, end: customEnd }
-        : getRange(selectedFilter, selectedDate);
+        : getRange(selectedFilter, new Date());
       const ana = await analyticsService.getAnalytics(user.id, start, end);
       setSymptomStats(ana.symptomsData);
       const cal = ana.caloriesData || { average: 0, perDay: [] };
@@ -152,12 +152,7 @@ export default function AnalyticsScreen() {
         // KPIs
         const sleepDurations = inRange.map(r => r.sleep?.sleepDuration || 0).filter(v => v > 0);
         const sleepAvgH = sleepDurations.length > 0 ? Math.round((sleepDurations.reduce((a,b)=>a+b,0) / sleepDurations.length) * 10) / 10 : 0;
-        const sportTotals = inRange.map(r => {
-          const anyRec = r as any;
-          const fromMinutes = typeof anyRec.activityMinutes === 'number' ? anyRec.activityMinutes : 0;
-          const fromArray = Array.isArray(anyRec.activityDurations) ? (anyRec.activityDurations as number[]).reduce((a,b)=>a+(b||0),0) : 0;
-          return fromMinutes + fromArray;
-        });
+        const sportTotals = inRange.map(r => (r.activityMinutes && r.activityMinutes > 0) ? r.activityMinutes : 0);
         const activeDays = sportTotals.filter(m => m > 0).length;
         const sportAvgH = activeDays > 0 ? Math.round(((sportTotals.reduce((a,b)=>a+b,0) / activeDays) / 60) * 10) / 10 : 0;
         const symptomsAvg = ana.symptomsOverTime && ana.symptomsOverTime.length > 0 ? Math.round((ana.symptomsOverTime.reduce((a,b)=>a+(b.count||0),0) / ana.symptomsOverTime.length) * 10) / 10 : 0;
@@ -283,7 +278,7 @@ export default function AnalyticsScreen() {
 
       const { start, end } = selectedFilter === 'Custom' && customStart && customEnd
         ? { start: customStart, end: customEnd }
-        : getRange(selectedFilter, selectedDate);
+        : getRange(selectedFilter, new Date());
       const ana = await analyticsService.getAnalytics(user.id, start, end);
       setSymptomStats(ana.symptomsData);
       const cal = ana.caloriesData || { average: 0, perDay: [] };
@@ -319,12 +314,7 @@ export default function AnalyticsScreen() {
         // KPIs
         const sleepDurations = inRange.map(r => r.sleep?.sleepDuration || 0).filter(v => v > 0);
         const sleepAvgH = sleepDurations.length > 0 ? Math.round((sleepDurations.reduce((a,b)=>a+b,0) / sleepDurations.length) * 10) / 10 : 0;
-        const sportTotals = inRange.map(r => {
-          const anyRec = r as any;
-          const fromMinutes = typeof anyRec.activityMinutes === 'number' ? anyRec.activityMinutes : 0;
-          const fromArray = Array.isArray(anyRec.activityDurations) ? (anyRec.activityDurations as number[]).reduce((a,b)=>a+(b||0),0) : 0;
-          return fromMinutes + fromArray;
-        });
+        const sportTotals = inRange.map(r => (r.activityMinutes && r.activityMinutes > 0) ? r.activityMinutes : 0);
         const activeDays = sportTotals.filter(m => m > 0).length;
         const sportAvgH = activeDays > 0 ? Math.round(((sportTotals.reduce((a,b)=>a+b,0) / activeDays) / 60) * 10) / 10 : 0;
         const symptomsAvg = ana.symptomsOverTime && ana.symptomsOverTime.length > 0 ? Math.round((ana.symptomsOverTime.reduce((a,b)=>a+(b.count||0),0) / ana.symptomsOverTime.length) * 10) / 10 : 0;
@@ -358,34 +348,31 @@ export default function AnalyticsScreen() {
     ) : null
   );
 
-  const renderBarListPanel = (sectionTitle: string, innerTitle: string, labels: string[], values: number[], color: any, infoId?: string, infoText?: string) => {
-    const max = Math.max(...values, 1);
-    return (
-      <View style={analyticsStyles.sectionCard}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={analyticsStyles.sectionTitleLarge}>{sectionTitle}</Text>
-          {infoId && (
-            <TouchableOpacity onPress={() => toggleInfo(infoId)}>
-              <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
-            </TouchableOpacity>
-          )}
-        </View>
-        {infoId && infoText ? <InfoBubble id={infoId} title={sectionTitle} description={infoText} /> : null}
-        <View style={analyticsStyles.innerPanel}>
-          <Text style={analyticsStyles.innerPanelTitle}>{innerTitle}</Text>
-          {labels.map((lab, i) => (
-            <View key={`${sectionTitle}-${lab}-${i}`} style={analyticsStyles.barListRow}>
-              <Text style={analyticsStyles.barListLabel}>{lab}</Text>
-              <View style={analyticsStyles.barListTrack}>
-                <View style={[analyticsStyles.barListFill, color, { width: `${Math.round((values[i] || 0) / max * 100)}%` }]} />
-              </View>
-              <Text style={analyticsStyles.barListValue}>{values[i] || 0}</Text>
-            </View>
-          ))}
-        </View>
+  const renderBarListPanel = (sectionTitle: string, innerTitle: string, labels: string[], values: number[], color: any, infoId?: string, infoText?: string) => (
+    <View style={analyticsStyles.sectionCard}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={analyticsStyles.sectionTitleLarge}>{sectionTitle}</Text>
+        {infoId && (
+          <TouchableOpacity onPress={() => toggleInfo(infoId)}>
+            <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
+          </TouchableOpacity>
+        )}
       </View>
-    );
-  };
+      {infoId && infoText ? <InfoBubble id={infoId} title={sectionTitle} description={infoText} /> : null}
+      <View style={analyticsStyles.innerPanel}>
+        {innerTitle ? <Text style={analyticsStyles.innerPanelTitle}>{innerTitle}</Text> : null}
+        {labels.map((lab, i) => (
+          <View key={`${sectionTitle}-${lab}-${i}`} style={analyticsStyles.barListRow}>
+            <Text style={analyticsStyles.barListLabel}>{lab}</Text>
+            <View style={analyticsStyles.barListTrack}>
+              <View style={[analyticsStyles.barListFill, color, { width: `${Math.round((values[i] || 0) / Math.max(...values, 1) * 100)}%` }]} />
+            </View>
+            <Text style={analyticsStyles.barListValue}>{values[i] || 0}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
 
   const renderTwoLines = (labels: string[], a: number[], b: number[]) => (
     <View style={analyticsStyles.sectionCard}>
@@ -395,7 +382,7 @@ export default function AnalyticsScreen() {
           <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
         </TouchableOpacity>
         <View style={{ position: 'absolute', top: 0, right: 0 }}>
-          <InfoBubble id={'svs'} title={'Symptoms vs Period'} description={'Daily counts of symptoms split by status: red = with period, green (dashed) = without period. Filled areas help visualize intensity over time.'} />
+          <InfoBubble id={'svs'} title={'Symptoms vs Period'} description={'Daily counts of symptoms split by status: red = with period, green = without period.'} />
         </View>
       </View>
       <View style={[analyticsStyles.innerPanel, { paddingTop: 16 }]}>        
@@ -418,37 +405,35 @@ export default function AnalyticsScreen() {
               const chartHeight = 220;
               const maxY = Math.max(1, ...a, ...b);
               const stepX = chartWidth / Math.max(1, labels.length - 1);
-              const toPoint = (val: number, idx: number) => `${paddingLeft + idx * stepX},${paddingTop + (chartHeight - (val / maxY) * (chartHeight - 10))}`;
-              const makePoints = (arr: number[]) => arr.map((v, i) => toPoint(v || 0, i)).join(' ');
               const axisY = `${paddingLeft},${paddingTop} ${paddingLeft},${paddingTop + chartHeight}`;
               const axisX = `${paddingLeft},${paddingTop + chartHeight} ${paddingLeft + chartWidth},${paddingTop + chartHeight}`;
               const tickStep = Math.max(1, Math.ceil(maxY / 4));
               const ticks = Array.from({ length: 4 }, (_, i) => (i + 1) * tickStep);
               const labelEvery = Math.max(1, Math.ceil(labels.length / 6));
-
-              // Build filled areas
+              const toPoint = (val: number, idx: number) => `${paddingLeft + idx * stepX},${paddingTop + (chartHeight - (val / maxY) * (chartHeight - 10))}`;
+              const makePoints = (arr: number[]) => arr.map((v, i) => toPoint(v || 0, i)).join(' ');
               const makeArea = (arr: number[]) => {
+                if (labels.length === 0) return '';
                 const pts = arr.map((v, i) => toPoint(v || 0, i)).join(' ');
-                const lastX = paddingLeft + (arr.length - 1) * stepX;
+                const lastX = paddingLeft + (labels.length - 1) * stepX;
                 const baseline = `${lastX},${paddingTop + chartHeight} ${paddingLeft},${paddingTop + chartHeight}`;
                 return `${pts} ${baseline}`;
               };
-
-              // Peak annotations
               const topIndices = (arr: number[], n: number) => (
                 arr.map((v, i) => ({ v: v || 0, i })).sort((x, y) => y.v - x.v).slice(0, n).map(p => p.i)
               );
               const peaksA = topIndices(a, 3);
               const peaksB = topIndices(b, 3);
-
               return (
                 <>
+                  {/* axes */}
                   <Polyline points={axisY} fill="none" stroke="#9ca3af" strokeWidth="1" />
                   <Polyline points={axisX} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                  {/* Y ticks */}
                   {ticks.map((val, idx) => {
                     const y = paddingTop + (chartHeight - (val / maxY) * (chartHeight - 10));
                     return (
-                      <React.Fragment key={`tickwrap-${idx}`}>
+                      <React.Fragment key={`svs-tick-${idx}`}>
                         <Polyline points={`${paddingLeft - 4},${y} ${paddingLeft},${y}`} fill="none" stroke="#9ca3af" strokeWidth="1" />
                         <SvgText x={paddingLeft - 8} y={y + 4} fill="#9ca3af" fontSize="10" textAnchor="end">{String(val)}</SvgText>
                       </React.Fragment>
@@ -459,16 +444,14 @@ export default function AnalyticsScreen() {
                     if (i % labelEvery !== 0 && i !== labels.length - 1) return null;
                     const x = paddingLeft + i * stepX;
                     const y = paddingTop + chartHeight + 18;
-                    return <SvgText key={`xlab-${i}`} x={x} y={y} fill="#6b7280" fontSize="9" textAnchor="end" transform={`rotate(-45, ${x}, ${y})`}>{lab}</SvgText>;
+                    return <SvgText key={`svs-x-${i}`} x={x} y={y} fill="#6b7280" fontSize="9" textAnchor="end" transform={`rotate(-45, ${x}, ${y})`}>{lab}</SvgText>;
                   })}
-
-                  {/* Filled areas: red = with period (a), green = without (b) */}
+                  {/* Filled areas */}
                   <Polyline points={makeArea(a)} fill="#dc262622" stroke="none" />
                   <Polyline points={makeArea(b)} fill="#10b98122" stroke="none" />
                   {/* Lines */}
                   <Polyline points={makePoints(a)} fill="none" stroke="#dc2626" strokeWidth="2" />
                   <Polyline points={makePoints(b)} fill="none" stroke="#10b981" strokeWidth="2" strokeDasharray="6,4" />
-
                   {/* Peak labels */}
                   {peaksA.map((idx) => {
                     const [xStr, yStr] = toPoint(a[idx] || 0, idx).split(',');
@@ -485,7 +468,7 @@ export default function AnalyticsScreen() {
             })()}
           </Svg>
         </View>
-        <Text style={[analyticsStyles.chartFooter, { fontWeight: '700' }]}>X: Time; Y: Number of symptoms</Text>
+        <Text style={[analyticsStyles.chartFooter, { fontWeight: '700' }]}>X: Time; Y: Symptoms count</Text>
       </View>
     </View>
   );
@@ -611,94 +594,97 @@ export default function AnalyticsScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={analyticsStyles.sectionCard}>
-          <View style={analyticsStyles.sectionHeaderRow}>
-            <Text style={analyticsStyles.sectionTitleLarge}>Calories Over Time</Text>
-            <TouchableOpacity onPress={() => toggleInfo('cal')}>
-              <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
-            </TouchableOpacity>
-            <View style={{ position: 'absolute', top: 0, right: 0 }}>
-              <InfoBubble id={'cal'} title={'Calories Over Time'} description={'Calories estimates from your logged meals.'} />
+        {/* Cycle Prediction moved up */}
+        {cyclePrediction && (
+          <View style={analyticsStyles.sectionCard}>
+            <View style={analyticsStyles.sectionHeaderRow}>
+              <Text style={analyticsStyles.sectionTitleLarge}>Cycle Prediction</Text>
+              <TouchableOpacity onPress={() => toggleInfo('cycle')}>
+                <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
+              </TouchableOpacity>
             </View>
-          </View>
-          <View style={analyticsStyles.innerPanel}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <View style={{ width: 18, height: 3, backgroundColor: '#f59e0b' }} />
-                <Text style={{ fontWeight: '700', color: '#374151' }}>Calories</Text>
+            <InfoBubble id={'cycle'} title={'Cycle Prediction'} description={'Estimations use your recorded period days and profile cycle length (supports continuous pill). Lateness compares last actual vs expected.'} />
+            <View style={analyticsStyles.innerPanel}>
+              
+              <View style={{ gap: 8 }}>
+                <View style={{ backgroundColor: '#374151', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
+                  <Text style={{ color: 'white', fontWeight: '700' }}>Last Period: {cyclePrediction.lastPeriodDate || '-'}</Text>
+                </View>
+                <View style={{ backgroundColor: '#1e40af', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
+                  <Text style={{ color: 'white', fontWeight: '700' }}>Next Period: {cyclePrediction.nextPeriodDate}</Text>
+                </View>
+                <View style={{ backgroundColor: '#6d28d9', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
+                  <Text style={{ color: 'white', fontWeight: '700' }}>Next Ovulation: {cyclePrediction.nextOvulationDate}</Text>
+                </View>
+                <View style={{ backgroundColor: '#065f46', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
+                  <Text style={{ color: 'white', fontWeight: '700' }}>Cycle: {cyclePrediction.cycleLengthDays} days</Text>
+                </View>
+                {typeof (cyclePrediction as any).latenessDays !== 'undefined' && (
+                  <View style={{ backgroundColor: '#334155', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
+                    <Text style={{ color: 'white', fontWeight: '700' }}>Lateness: {(cyclePrediction as any).latenessDays} days</Text>
+                  </View>
+                )}
               </View>
             </View>
-            {/* Line chart with time on X axis and kcal on Y */}
-            {(() => {
-              const labels = caloriesGrouped.labels;
-              const values = caloriesGrouped.values;
-              const paddingLeft = 40;
-              const paddingTop = 8;
-              const chartWidth = 320;
-              const chartHeight = 220;
-              const maxY = Math.max(1, ...values);
-              const stepX = chartWidth / Math.max(1, labels.length - 1);
-              const toPoint = (val: number, idx: number) => `${paddingLeft + idx * stepX},${paddingTop + (chartHeight - (val / maxY) * (chartHeight - 10))}`;
-              const makePoints = (arr: number[]) => arr.map((v, i) => toPoint(v || 0, i)).join(' ');
-              const makeArea = (arr: number[]) => {
-                const pts = arr.map((v, i) => toPoint(v || 0, i)).join(' ');
-                const lastX = paddingLeft + (arr.length - 1) * stepX;
-                const baseline = `${lastX},${paddingTop + chartHeight} ${paddingLeft},${paddingTop + chartHeight}`;
-                return `${pts} ${baseline}`;
-              };
-              const axisY = `${paddingLeft},${paddingTop} ${paddingLeft},${paddingTop + chartHeight}`;
-              const axisX = `${paddingLeft},${paddingTop + chartHeight} ${paddingLeft + chartWidth},${paddingTop + chartHeight}`;
-              const tickStep = Math.max(1, Math.ceil(maxY / 4));
-              const ticks = Array.from({ length: 4 }, (_, i) => (i + 1) * tickStep);
-              const labelEvery = Math.max(1, Math.ceil(labels.length / 6));
-              const topIndices = values.map((v, i) => ({ v: v || 0, i })).sort((a, b) => b.v - a.v).slice(0, 3).map(p => p.i);
-              return (
-                <View style={{ height: 280, width: '100%' }}>
-                  <Svg height="280" width="100%">
-                    <Polyline points={axisY} fill="none" stroke="#9ca3af" strokeWidth="1" />
-                    <Polyline points={axisX} fill="none" stroke="#9ca3af" strokeWidth="1" />
-                    {ticks.map((val, idx) => {
-                      const y = paddingTop + (chartHeight - (val / maxY) * (chartHeight - 10));
-                      return (
-                        <React.Fragment key={`cal-tick-${idx}`}>
-                          <Polyline points={`${paddingLeft - 4},${y} ${paddingLeft},${y}`} fill="none" stroke="#9ca3af" strokeWidth="1" />
-                          <SvgText x={paddingLeft - 8} y={y + 4} fill="#9ca3af" fontSize="10" textAnchor="end">{String(val)}</SvgText>
-                        </React.Fragment>
-                      );
-                    })}
-                    {/* X labels rotated */}
-                    {labels.map((lab, i) => {
-                      if (i % labelEvery !== 0 && i !== labels.length - 1) return null;
-                      const x = paddingLeft + i * stepX;
-                      const y = paddingTop + chartHeight + 18;
-                      return <SvgText key={`cal-x-${i}`} x={x} y={y} fill="#6b7280" fontSize="9" textAnchor="end" transform={`rotate(-45, ${x}, ${y})`}>{lab}</SvgText>;
-                    })}
-                    <Polyline points={makeArea(values)} fill="#f59e0b22" stroke="none" />
-                    <Polyline points={makePoints(values)} fill="none" stroke="#f59e0b" strokeWidth="2" />
-                    {/* peak labels */}
-                    {topIndices.map((idx) => {
-                      const [xStr, yStr] = toPoint(values[idx] || 0, idx).split(',');
-                      const x = parseFloat(xStr), y = parseFloat(yStr);
-                      return <SvgText key={`cal-peak-${idx}`} x={x} y={y - 8} fill="#b45309" fontSize="10" fontWeight="700" textAnchor="middle">{String(values[idx] || 0)}</SvgText>;
-                    })}
-                  </Svg>
+          </View>
+        )}
+
+        {/* Bloating (standalone section) */}
+        <View style={analyticsStyles.sectionCard}>
+          <View style={analyticsStyles.sectionHeaderRow}>
+            <Text style={analyticsStyles.sectionTitleLarge}>Bloating</Text>
+          </View>
+          <View style={analyticsStyles.innerPanel}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+              <View>
+                <Animated.Image
+                  source={BLOATED_IMG}
+                  style={{ width: 180, height: 180, borderRadius: 12, transform: [{ scale: bellyScale }] }}
+                  resizeMode="cover"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#111827', fontWeight: '700', fontSize: 16 }}>Bloated days</Text>
+                <Text style={{ color: '#374151', marginBottom: 6 }}>{bloatingStats.daysWith} / {bloatingStats.totalDays}</Text>
+                <View style={{ height: 10, backgroundColor: '#e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+                  <View style={{ width: `${Math.round((bloatingStats.daysWith / Math.max(1, bloatingStats.totalDays)) * 100)}%`, height: '100%', backgroundColor: '#fb7185' }} />
                 </View>
-              );
-            })()}
-            <Text style={[analyticsStyles.chartFooter, { fontWeight: '700' }]}>X: Time; Y: Calories</Text>
+                {(() => {
+                  try {
+                    const inRangeAll = (AnalyticsScreen as any)._allRecords as Array<{ date: string; symptoms?: string[] }> | undefined;
+                    if (!inRangeAll) return null;
+                    const only = inRangeAll.filter(r => (r.symptoms || []).some(s => /bloat/i.test(String(s))));
+                    if (only.length < 2) return null;
+                    const months = only.map(r => r.date.slice(0,7));
+                    const unique = Array.from(new Set(months)).sort();
+                    if (unique.length < 2) return null;
+                    const gaps: number[] = [];
+                    for (let i=1;i<unique.length;i++) {
+                      const [y1,m1] = unique[i-1].split('-').map(Number);
+                      const [y2,m2] = unique[i].split('-').map(Number);
+                      gaps.push((y2 - y1) * 12 + (m2 - m1));
+                    }
+                    const avgGap = Math.round((gaps.reduce((a,b)=>a+b,0) / gaps.length));
+                    const periodic = avgGap > 0 && avgGap <= 3;
+                    return (
+                      <Text style={{ marginTop: 8, color: '#374151' }}>Periodic: {periodic ? 'Yes' : 'No'}{periodic ? ` — each ${avgGap} month(s)` : ''}</Text>
+                    );
+                  } catch { return null; }
+                })()}
+              </View>
+            </View>
           </View>
         </View>
 
-        {renderBarListPanel('Symptom Recurrence Analysis', 'Most Frequent Symptoms:', topSymptoms.map(s => s.name), topSymptoms.map(s => s.count), analyticsStyles.chartBarPink, 'sra', 'Top symptoms by number of days they were reported within the selected period.')}
-
+        {/* Digestive Issues Days Trend */}
         <View style={analyticsStyles.sectionCard}>
           <View style={analyticsStyles.sectionHeaderRow}>
-            <Text style={analyticsStyles.sectionTitleLarge}>Digestive Issues Days Trend</Text>
+            <Text style={analyticsStyles.sectionTitleLarge}>Digestive Issues Trend</Text>
             <TouchableOpacity onPress={() => toggleInfo('dig')}>
               <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
             </TouchableOpacity>
             <View style={{ position: 'absolute', top: 0, right: 0 }}>
-              <InfoBubble id={'dig'} title={'Digestive Issues Days Trend'} description={'Counts of digestive-related symptoms: bloating, gas, stomach pain, constipation, diarrhea, cramps, reflux, heartburn.'} />
+              <InfoBubble id={'dig'} title={'Digestive Issues Trend'} description={'Counts of digestive-related symptoms: bloating, gas, stomach pain, constipation, diarrhea, cramps, reflux, heartburn.'} />
             </View>
           </View>
           <View style={analyticsStyles.innerPanel}>
@@ -760,51 +746,13 @@ export default function AnalyticsScreen() {
           </View>
         </View>
 
-        {renderTwoLines(periodSeries.labels, periodSeries.withPeriod, periodSeries.withoutPeriod)}
-
-        {cyclePrediction && (
-          <View style={analyticsStyles.sectionCard}>
-            <View style={analyticsStyles.sectionHeaderRow}>
-              <Text style={analyticsStyles.sectionTitleLarge}>Cycle Prediction</Text>
-              <TouchableOpacity onPress={() => toggleInfo('cycle')}>
-                <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-            <InfoBubble id={'cycle'} title={'Cycle Prediction'} description={'Estimations use your recorded period days and profile cycle length (supports continuous pill). Lateness compares last actual vs expected.'} />
-            <View style={analyticsStyles.innerPanel}>
-              <Text style={analyticsStyles.innerPanelTitle}>Next dates</Text>
-              <View style={{ gap: 8 }}>
-                <View style={{ backgroundColor: '#374151', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
-                  <Text style={{ color: 'white', fontWeight: '700' }}>Last Period: {cyclePrediction.lastPeriodDate || '-'}</Text>
-                </View>
-                <View style={{ backgroundColor: '#1e40af', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
-                  <Text style={{ color: 'white', fontWeight: '700' }}>Next Period: {cyclePrediction.nextPeriodDate}</Text>
-                </View>
-                <View style={{ backgroundColor: '#6d28d9', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
-                  <Text style={{ color: 'white', fontWeight: '700' }}>Next Ovulation: {cyclePrediction.nextOvulationDate}</Text>
-                </View>
-                <View style={{ backgroundColor: '#065f46', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
-                  <Text style={{ color: 'white', fontWeight: '700' }}>Cycle: {cyclePrediction.cycleLengthDays} days</Text>
-                </View>
-                {typeof (cyclePrediction as any).latenessDays !== 'undefined' && (
-                  <View style={{ backgroundColor: '#334155', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
-                    <Text style={{ color: 'white', fontWeight: '700' }}>Lateness: {(cyclePrediction as any).latenessDays} days</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          </View>
-        )}
-
+        {/* Food Correlation Analysis */}
         <View style={analyticsStyles.sectionCard}>
           <View style={analyticsStyles.sectionHeaderRow}>
             <Text style={analyticsStyles.sectionTitleLarge}>Food Correlation Analysis</Text>
             <TouchableOpacity onPress={() => toggleInfo('fdc')}>
               <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
             </TouchableOpacity>
-            <View style={{ position: 'absolute', top: 0, right: 0 }}>
-              <InfoBubble id={'fdc'} title={'Food Correlation Analysis'} description={'Computed as: days with (food present AND digestive issue present) / days with food present. Digestive issues include bloating, gas, stomach pain, constipation, diarrhea, cramps, reflux, heartburn.'} />
-            </View>
           </View>
           <View style={analyticsStyles.tableContainer}>
             <View style={analyticsStyles.table}>
@@ -826,61 +774,117 @@ export default function AnalyticsScreen() {
             )}
             {(() => {
               const details = (AnalyticsScreen as any)._foodSymptomDetails as Record<string, Array<{ name: string; count: number }>> | undefined;
-              const topFoods = foodDigestiveCorrelation.slice(0, 3).map(f => f.name);
-              const itemsList = topFoods.join(', ');
-              const symptomUnion: Record<string, number> = {};
-              if (details) {
-                topFoods.forEach(f => (details[f] || []).forEach(({ name, count }) => { symptomUnion[name] = (symptomUnion[name] || 0) + count; }));
-              }
-              const topSymptoms = Object.entries(symptomUnion).sort((a,b)=>b[1]-a[1]).slice(0, 3).map(([n,c]) => `${n} (${c})`).join(', ');
-              const disclaimer = `Note: correlation does not imply causation.\nWe observe that when you eat ${itemsList || 'these foods'}, you often log: ${topSymptoms || 'various digestive symptoms'}.`;
+              if (!details) return null;
+              const top = foodDigestiveCorrelation[0];
+              if (!top) return null;
+              const sym = (details[top.name] || []).slice(0, 2);
+              const phr = sym.map(s => `${s.name} (${s.count})`).join(', ');
               return (
-                <Text style={[analyticsStyles.chartFooter, { marginTop: 8 }]}>{disclaimer}</Text>
+                <Text style={[analyticsStyles.chartFooter, { marginTop: 8 }]}>When you eat {top.name}, you often report: {phr}. Approx. {top.correlationPct}% chance of digestive issues.</Text>
               );
             })()}
           </View>
-          {/* Bloating animation and count */}
-          <View style={[analyticsStyles.innerPanel, { marginTop: 12 }]}> 
-            <Text style={analyticsStyles.innerPanelTitle}>Bloating (range)</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-              <View>
-                <Animated.Image
-                  source={BLOATED_IMG}
-                  style={{ width: 180, height: 180, borderRadius: 12, transform: [{ scale: bellyScale }] }}
-                  resizeMode="cover"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: '#111827', fontWeight: '700', fontSize: 16 }}>Bloated days</Text>
-                <Text style={{ color: '#374151', marginBottom: 6 }}>{bloatingStats.daysWith} / {bloatingStats.totalDays}</Text>
-                <View style={{ height: 10, backgroundColor: '#e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
-                  <View style={{ width: `${Math.round((bloatingStats.daysWith / Math.max(1, bloatingStats.totalDays)) * 100)}%`, height: '100%', backgroundColor: '#fb7185' }} />
-                </View>
-                {/* No action buttons: using bundled image */}
+        </View>
+
+        {/* Symptoms vs Period after Food Correlation */}
+        {renderTwoLines(periodSeries.labels, periodSeries.withPeriod, periodSeries.withoutPeriod)}
+
+        {/* Symptom Recurrence after Symptoms vs Period */}
+        {renderBarListPanel('Most Frequent Symptoms', '', topSymptoms.map(s => s.name), topSymptoms.map(s => s.count), analyticsStyles.chartBarPink, 'sra', 'Top symptoms by number of days they were reported within the selected period.')}
+
+        {/* Calories Over Time (placed before Bilan) */}
+        <View style={analyticsStyles.sectionCard}>
+          <View style={analyticsStyles.sectionHeaderRow}>
+            <Text style={analyticsStyles.sectionTitleLarge}>Calories Over Time</Text>
+            <TouchableOpacity onPress={() => toggleInfo('cal')}>
+              <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
+            </TouchableOpacity>
+          </View>
+          <View style={analyticsStyles.innerPanel}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ width: 18, height: 3, backgroundColor: '#f59e0b' }} />
+                <Text style={{ fontWeight: '700', color: '#374151' }}>Calories</Text>
               </View>
             </View>
+            {(() => {
+              const labels = caloriesGrouped.labels;
+              const values = caloriesGrouped.values;
+              const paddingLeft = 40;
+              const paddingTop = 8;
+              const chartWidth = 320;
+              const chartHeight = 220;
+              const maxY = Math.max(1, ...values);
+              const stepX = chartWidth / Math.max(1, labels.length - 1);
+              const toPoint = (val: number, idx: number) => `${paddingLeft + idx * stepX},${paddingTop + (chartHeight - (val / maxY) * (chartHeight - 10))}`;
+              const makePoints = (arr: number[]) => arr.map((v, i) => toPoint(v || 0, i)).join(' ');
+              const makeArea = (arr: number[]) => {
+                const pts = arr.map((v, i) => toPoint(v || 0, i)).join(' ');
+                const lastX = paddingLeft + (arr.length - 1) * stepX;
+                const baseline = `${lastX},${paddingTop + chartHeight} ${paddingLeft},${paddingTop + chartHeight}`;
+                return `${pts} ${baseline}`;
+              };
+              const axisY = `${paddingLeft},${paddingTop} ${paddingLeft},${paddingTop + chartHeight}`;
+              const axisX = `${paddingLeft},${paddingTop + chartHeight} ${paddingLeft + chartWidth},${paddingTop + chartHeight}`;
+              const tickStep = Math.max(1, Math.ceil(maxY / 4));
+              const ticks = Array.from({ length: 4 }, (_, i) => (i + 1) * tickStep);
+              const labelEvery = Math.max(1, Math.ceil(labels.length / 6));
+              const topIndices = values.map((v, i) => ({ v: v || 0, i })).sort((a, b) => b.v - a.v).slice(0, 3).map(p => p.i);
+              return (
+                <View style={{ height: 280, width: '100%' }}>
+                  <Svg height="280" width="100%">
+                    <Polyline points={axisY} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                    <Polyline points={axisX} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                    {ticks.map((val, idx) => {
+                      const y = paddingTop + (chartHeight - (val / maxY) * (chartHeight - 10));
+                      return (
+                        <React.Fragment key={`cal2-tick-${idx}`}>
+                          <Polyline points={`${paddingLeft - 4},${y} ${paddingLeft},${y}`} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                          <SvgText x={paddingLeft - 8} y={y + 4} fill="#9ca3af" fontSize="10" textAnchor="end">{String(val)}</SvgText>
+                        </React.Fragment>
+                      );
+                    })}
+                    {labels.map((lab, i) => {
+                      if (i % labelEvery !== 0 && i !== labels.length - 1) return null;
+                      const x = paddingLeft + i * stepX;
+                      const y = paddingTop + chartHeight + 18;
+                      return <SvgText key={`cal2-x-${i}`} x={x} y={y} fill="#6b7280" fontSize="9" textAnchor="end" transform={`rotate(-45, ${x}, ${y})`}>{lab}</SvgText>;
+                    })}
+                    <Polyline points={makeArea(values)} fill="#f59e0b22" stroke="none" />
+                    <Polyline points={makePoints(values)} fill="none" stroke="#f59e0b" strokeWidth="2" />
+                    {topIndices.map((idx) => {
+                      const [xStr, yStr] = toPoint(values[idx] || 0, idx).split(',');
+                      const x = parseFloat(xStr), y = parseFloat(yStr);
+                      return <SvgText key={`cal2-peak-${idx}`} x={x} y={y - 8} fill="#b45309" fontSize="10" fontWeight="700" textAnchor="middle">{String(values[idx] || 0)}</SvgText>;
+                    })}
+                    {/* annotate biggest rise and drop */}
+                    {(() => {
+                      if (values.length < 2) return null as any;
+                      const deltas = values.slice(1).map((v,i)=>({i,i1:i,i2:i+1, d:(v - (values[i]||0))}));
+                      const rise = deltas.reduce((a,b)=> b.d>a.d?b:a, {i:0,i1:0,i2:1,d:-Infinity});
+                      const drop = deltas.reduce((a,b)=> b.d<a.d?b:a, {i:0,i1:0,i2:1,d:Infinity});
+                      const [x1r,y1r]=toPoint(values[rise.i1]||0,rise.i1).split(',');
+                      const [x2r,y2r]=toPoint(values[rise.i2]||0,rise.i2).split(',');
+                      const [x1d,y1d]=toPoint(values[drop.i1]||0,drop.i1).split(',');
+                      const [x2d,y2d]=toPoint(values[drop.i2]||0,drop.i2).split(',');
+                      return (
+                        <>
+                          <Polyline points={`${x1r},${y1r} ${x2r},${y2r}`} fill="none" stroke="#065f46" strokeWidth="2" />
+                          <SvgText x={(parseFloat(x2r)+4)} y={(parseFloat(y2r)-6)} fill="#065f46" fontSize="10" fontWeight="700">+{Math.round(rise.d)}</SvgText>
+                          <Polyline points={`${x1d},${y1d} ${x2d},${y2d}`} fill="none" stroke="#991b1b" strokeWidth="2" />
+                          <SvgText x={(parseFloat(x2d)+4)} y={(parseFloat(y2d)+12)} fill="#991b1b" fontSize="10" fontWeight="700">{Math.round(drop.d)}</SvgText>
+                        </>
+                      );
+                    })()}
+                  </Svg>
+                </View>
+              );
+            })()}
+            <Text style={[analyticsStyles.chartFooter, { fontWeight: '700' }]}>X: Time; Y: Calories</Text>
           </View>
         </View>
 
-        {/* Personalized Insights */}
-        <View style={[analyticsStyles.sectionCard, { borderColor: '#dc2626' }]}> 
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={analyticsStyles.sectionTitleLarge}>Bilan</Text>
-          </View>
-          <View style={[analyticsStyles.innerPanel, { backgroundColor: '#e0f2fe', borderWidth: 1, borderColor: '#dc2626' }]}> 
-            {insights.map((it, idx) => (
-              <View key={`ins-${idx}`} style={{ marginBottom: 8 }}>
-                <Text style={{ fontWeight: '700', color: '#111827' }}>{it.title}</Text>
-                <Text style={{ color: '#111827' }}>{it.text}</Text>
-              </View>
-            ))}
-            {insights.length === 0 && (
-              <Text style={{ color: '#111827' }}>Insights will appear once you have enough data in the selected period.</Text>
-            )}
-          </View>
-        </View>
-
-        {/* Weight Over Time (weekly entries) */}
+        {/* Weight Over Time (weekly entries) placed after Calories */}
         {weightSeries.values.length > 0 && (
           <View style={analyticsStyles.sectionCard}>
             <View style={analyticsStyles.sectionHeaderRow}>
@@ -920,6 +924,23 @@ export default function AnalyticsScreen() {
                     <Svg height="280" width="100%">
                       <Polyline points={axisY} fill="none" stroke="#9ca3af" strokeWidth="1" />
                       <Polyline points={axisX} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                      {/* Y ticks every 2 kg */}
+                      {(() => {
+                        const start = Math.floor(bottomY / 2) * 2;
+                        const end = Math.ceil(topY / 2) * 2;
+                        const ticks: number[] = [];
+                        for (let k = start; k <= end; k += 2) ticks.push(k);
+                        return ticks.map((val, idx) => {
+                          const norm = (val - bottomY) / Math.max(1e-6, (topY - bottomY));
+                          const y = paddingTop + (chartHeight - norm * (chartHeight - 10));
+                          return (
+                            <React.Fragment key={`wgt-tick-${idx}`}>
+                              <Polyline points={`${paddingLeft - 4},${y} ${paddingLeft},${y}`} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                              <SvgText x={paddingLeft - 8} y={y + 4} fill="#9ca3af" fontSize="10" textAnchor="end">{String(val)}</SvgText>
+                            </React.Fragment>
+                          );
+                        });
+                      })()}
                       {/* X labels */}
                       {labels.map((lab, i) => {
                         if (i % labelEvery !== 0 && i !== labels.length - 1) return null;
@@ -944,6 +965,33 @@ export default function AnalyticsScreen() {
             </View>
           </View>
         )}
+
+        {/* Bilan (post-it recap) */}
+        <View style={[analyticsStyles.sectionCard, { borderColor: 'transparent' }]}> 
+          <View style={{ alignItems: 'flex-start' }}>
+            {(() => {
+              const r = (selectedFilter === 'Custom' && customStart && customEnd)
+                ? { start: customStart, end: customEnd }
+                : getRange(selectedFilter, selectedDate);
+              return (
+                <View style={{ backgroundColor: '#ffe4e6', borderWidth: 1, borderColor: '#fca5a5', borderRadius: 8, padding: 12, transform: [{ rotate: '-0.8deg'}], shadowColor: '#000', shadowOpacity: 0.1, shadowOffset: { width: 0, height: 2 }, shadowRadius: 8, elevation: 3, maxWidth: '100%' }}>
+                  <View style={{ backgroundColor: '#fecdd3', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, alignSelf: 'flex-start', marginBottom: 8 }}>
+                    <Text style={{ color: '#9d174d', fontWeight: '700' }}>Bilan — {r.start} → {r.end}</Text>
+                  </View>
+                  {insights.map((it, idx) => (
+                    <View key={`ins-${idx}`} style={{ marginBottom: 6 }}>
+                      <Text style={{ fontWeight: '700', color: '#111827' }}>{it.title}</Text>
+                      <Text style={{ color: '#111827' }}>{it.text}</Text>
+                    </View>
+                  ))}
+                  {insights.length === 0 && (
+                    <Text style={{ color: '#111827' }}>Insights will appear once you have enough data in the selected period.</Text>
+                  )}
+                </View>
+              );
+            })()}
+          </View>
+        </View>
 
       </ScrollView>
       <Modal visible={showCustom} transparent onRequestClose={() => setShowCustom(false)}>

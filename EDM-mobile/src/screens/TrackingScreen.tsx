@@ -12,6 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { analyzeMealImage } from '../services/aiService';
 import { useTranslation } from 'react-i18next';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { trackingStyles } from '../styles/trackingStyles';
 import { estimateCaloriesForRecord, estimateCaloriesForItems, estimateCaloriesForEntries } from '../services/caloriesService';
@@ -89,6 +90,17 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
   const [activeTab, setActiveTab] = useState<TabType>(route?.params?.initialTab || 'sleep');
   const [saved, setSaved] = useState(false);
   const { selectedDate, triggerRefresh } = useDate();
+  // Per-tab saved/edit state
+  const [hasSleepSaved, setHasSleepSaved] = useState(false);
+  const [hasSportSaved, setHasSportSaved] = useState(false);
+  const [hasMealsSaved, setHasMealsSaved] = useState(false);
+  const [hasCycleSaved, setHasCycleSaved] = useState(false);
+  const [hasSymptomsSaved, setHasSymptomsSaved] = useState(false);
+  const [isSleepEditing, setIsSleepEditing] = useState(true);
+  const [isSportEditing, setIsSportEditing] = useState(true);
+  const [isMealsEditing, setIsMealsEditing] = useState(true);
+  const [isCycleEditing, setIsCycleEditing] = useState(true);
+  const [isSymptomsEditing, setIsSymptomsEditing] = useState(true);
 
   // Vision meal analysis UI state
   const [analysisModalVisible, setAnalysisModalVisible] = useState(false);
@@ -108,6 +120,10 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
   const [sameSportRoutine, setSameSportRoutine] = useState(false);
   const [routineDays, setRoutineDays] = useState<string[]>([]);
   const [routineTime, setRoutineTime] = useState('');
+  // Weekly routine templates per weekday (0=Sun..6=Sat)
+  const [sportRoutineByWeekday, setSportRoutineByWeekday] = useState<Record<number, { activities: string[]; durations: Record<string, number> }>>({});
+  const [sportEditDay, setSportEditDay] = useState<number>(new Date().getDay());
+  const [sportSelectedDays, setSportSelectedDays] = useState<number[]>([new Date().getDay()]);
 
   // Sleep state
   const [sleepData, setSleepData] = useState({
@@ -117,6 +133,9 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
     sleepDuration: 0
   });
   const [sameSleepRoutine, setSameSleepRoutine] = useState(false);
+  const [sleepRoutineByWeekday, setSleepRoutineByWeekday] = useState<Record<number, { bedTime: string; wakeTime: string; sleepQuality: number; sleepDuration: number }>>({});
+  const [sleepEditDay, setSleepEditDay] = useState<number>(new Date().getDay());
+  const [sleepSelectedDays, setSleepSelectedDays] = useState<number[]>([new Date().getDay()]);
 
   // Auto-calculate sleep duration when bedTime or wakeTime changes
   useEffect(() => {
@@ -141,70 +160,144 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
       try {
         const date = selectedDate.toISOString().split('T')[0];
         const record = await trackingService.getTrackingByDate(user.id, date);
-        if (record) {
-          if (record.sleep) {
-            setSleepData({
-              bedTime: record.sleep.bedTime || '',
-              wakeTime: record.sleep.wakeTime || '',
-              sleepQuality: record.sleep.sleepQuality || 0,
-              sleepDuration: record.sleep.sleepDuration || 0
-            });
-          } else {
-            setSleepData({ bedTime: '', wakeTime: '', sleepQuality: 0, sleepDuration: 0 });
-          }
+                 if (record) {
+           if (record.sleep) {
+             setSleepData({
+               bedTime: record.sleep.bedTime || '',
+               wakeTime: record.sleep.wakeTime || '',
+               sleepQuality: record.sleep.sleepQuality || 0,
+               sleepDuration: record.sleep.sleepDuration || 0
+             });
+             setHasSleepSaved(true);
+             setIsSleepEditing(false);
+           } else {
+             setSleepData({ bedTime: '', wakeTime: '', sleepQuality: 0, sleepDuration: 0 });
+             setHasSleepSaved(false);
+             setIsSleepEditing(true);
+           }
 
-          if (record.meals) {
-            setMealData({
-              morning: record.meals.morning || '',
-              afternoon: record.meals.afternoon || '',
-              evening: record.meals.evening || '',
-              snack: record.meals.snack || '',
-              drinkType: record.meals.drinkType || '',
-              drinkQuantities: record.meals.drinkQuantities || {}
-            });
-          } else {
-            setMealData({
-              morning: '', afternoon: '', evening: '', snack: '', drinkType: '', drinkQuantities: {}
-            });
-          }
+           if (record.meals) {
+             setMealData({
+               morning: record.meals.morning || '',
+               afternoon: record.meals.afternoon || '',
+               evening: record.meals.evening || '',
+               snack: record.meals.snack || '',
+               drinkType: record.meals.drinkType || '',
+               drinkQuantities: record.meals.drinkQuantities || {}
+             });
+             setHasMealsSaved(Boolean(record.meals.morning || record.meals.afternoon || record.meals.evening || record.meals.snack || record.meals.drinkType));
+             setIsMealsEditing(!Boolean(record.meals.morning || record.meals.afternoon || record.meals.evening || record.meals.snack || record.meals.drinkType));
+           } else {
+             setMealData({
+               morning: '', afternoon: '', evening: '', snack: '', drinkType: '', drinkQuantities: {}
+             });
+             setHasMealsSaved(false);
+             setIsMealsEditing(true);
+           }
 
-          if (record.symptoms) setSelectedSymptoms(record.symptoms); else setSelectedSymptoms([]);
-          if (record.activity) setSelectedSports(record.activity); else setSelectedSports([]);
-          if (record.period) setHasPeriod(record.period.active ? 'yes' : 'no'); else setHasPeriod('');
-        } else {
-          setSleepData({ bedTime: '', wakeTime: '', sleepQuality: 0, sleepDuration: 0 });
-          setMealData({ morning: '', afternoon: '', evening: '', snack: '', drinkType: '', drinkQuantities: {} });
-          setSelectedSymptoms([]);
-          setSelectedSports([]);
-          setHasPeriod('');
+           if (record.symptoms) {
+             setSelectedSymptoms(record.symptoms);
+             setHasSymptomsSaved(record.symptoms.length > 0);
+             setIsSymptomsEditing(!(record.symptoms.length > 0));
+           } else {
+             setSelectedSymptoms([]);
+             setHasSymptomsSaved(false);
+             setIsSymptomsEditing(true);
+           }
+           if (record.activity) setSelectedSports(record.activity); else setSelectedSports([]);
+           setSportDurations({});
+           if (record.period) {
+             setHasPeriod(record.period.active ? 'yes' : 'no');
+             setHasCycleSaved(true);
+             setIsCycleEditing(false);
+           } else {
+             setHasPeriod('');
+             setHasCycleSaved(false);
+             setIsCycleEditing(true);
+           }
+           if (Array.isArray(record.activity) && record.activity.length > 0) {
+             setHasSportSaved(true);
+             setIsSportEditing(false);
+           } else {
+             setHasSportSaved(false);
+             setIsSportEditing(true);
+           }
+         } else {
+           setSleepData({ bedTime: '', wakeTime: '', sleepQuality: 0, sleepDuration: 0 });
+           setMealData({ morning: '', afternoon: '', evening: '', snack: '', drinkType: '', drinkQuantities: {} });
+           setSelectedSymptoms([]);
+           setSelectedSports([]);
+           setSportDurations({});
+           setHasPeriod('');
+           setHasSleepSaved(false);
+           setHasSportSaved(false);
+           setHasMealsSaved(false);
+           setHasCycleSaved(false);
+           setHasSymptomsSaved(false);
+           setIsSleepEditing(true);
+           setIsSportEditing(true);
+           setIsMealsEditing(true);
+           setIsCycleEditing(true);
+           setIsSymptomsEditing(true);
+         }
+         setMealSectionIndex(0);
+
+         // Load weekly templates from storage
+         try {
+           const [sleepTplRaw, sportTplRaw] = await Promise.all([
+             AsyncStorage.getItem(`sleepRoutineByWeekday:${user.id}`),
+             AsyncStorage.getItem(`sportRoutineByWeekday:${user.id}`),
+           ]);
+           if (sleepTplRaw) setSleepRoutineByWeekday(JSON.parse(sleepTplRaw));
+           if (sportTplRaw) setSportRoutineByWeekday(JSON.parse(sportTplRaw));
+         } catch {}
+
+        // Prefill from weekly template when toggles are on (use edit-day selections)
+        if (sameSleepRoutine && (!sleepData.bedTime || !sleepData.wakeTime)) {
+          const tpl = (sleepRoutineByWeekday as any)[sleepEditDay];
+          if (tpl) setSleepData({ ...tpl });
         }
-        setMealSectionIndex(0); // reset to first section when date changes
-
-        // Prefill from previous same weekday if toggles are on and fields empty
-        const weekday = selectedDate.getDay();
-        const all = await trackingService.getTrackingByUser(user.id);
-        const sameWeekday = all
-          .filter(r => new Date(r.date).getDay() === weekday)
-          .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        const last = sameWeekday[0];
-        if (last) {
-          if (sameSportRoutine && selectedSports.length === 0 && Array.isArray(last.activity) && last.activity.length > 0) {
-            setSelectedSports(last.activity);
-          }
-          if (sameSleepRoutine && !sleepData.bedTime && !sleepData.wakeTime && last.sleep) {
-            setSleepData({
-              bedTime: last.sleep.bedTime || '',
-              wakeTime: last.sleep.wakeTime || '',
-              sleepQuality: last.sleep.sleepQuality || 0,
-              sleepDuration: last.sleep.sleepDuration || 0,
-            });
+        if (sameSportRoutine && selectedSports.length === 0) {
+          const tpl = (sportRoutineByWeekday as any)[sportEditDay];
+          if (tpl) {
+            setSelectedSports(tpl.activities);
+            setSportDurations(tpl.durations || {});
           }
         }
       } catch {}
     };
 
     loadSavedData();
-  }, [user, selectedDate]);
+  }, [user, selectedDate, sleepEditDay, sportEditDay]);
+
+  // Apply templates when routine toggles change while editing
+  useEffect(() => {
+    if (!user) return;
+    if (sameSleepRoutine && isSleepEditing) {
+      const tpl = sleepRoutineByWeekday[sleepEditDay];
+      if (tpl) setSleepData({ ...tpl });
+    }
+  }, [user, selectedDate, sameSleepRoutine, sleepRoutineByWeekday, isSleepEditing, sleepEditDay]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (sameSportRoutine && isSportEditing) {
+      const tpl = sportRoutineByWeekday[sportEditDay];
+      if (tpl) {
+        setSelectedSports(tpl.activities);
+        setSportDurations(tpl.durations || {});
+      }
+    }
+  }, [user, selectedDate, sameSportRoutine, sportRoutineByWeekday, isSportEditing, sportEditDay]);
+
+  // Keep edit-day in sync with the date by default
+  useEffect(() => {
+    const d = selectedDate.getDay();
+    setSleepEditDay(d);
+    setSportEditDay(d);
+    setSleepSelectedDays([d]);
+    setSportSelectedDays([d]);
+  }, [selectedDate]);
 
   // Add focus listener to reload data when returning to this screen
   useEffect(() => {
@@ -242,12 +335,14 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
 
           if (record.symptoms) setSelectedSymptoms(record.symptoms); else setSelectedSymptoms([]);
           if (record.activity) setSelectedSports(record.activity); else setSelectedSports([]);
+          setSportDurations({});
           if (record.period) setHasPeriod(record.period.active ? 'yes' : 'no'); else setHasPeriod('');
         } else {
           setSleepData({ bedTime: '', wakeTime: '', sleepQuality: 0, sleepDuration: 0 });
           setMealData({ morning: '', afternoon: '', evening: '', snack: '', drinkType: '', drinkQuantities: {} });
           setSelectedSymptoms([]);
           setSelectedSports([]);
+          setSportDurations({});
           setHasPeriod('');
         }
       } catch {}
@@ -353,67 +448,84 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
     }
   };
 
-  const handleSaveSymptoms = async () => {
-    await saveToDatabase({ symptoms: selectedSymptoms });
-  };
+    const handleSaveSymptoms = async () => {
+     await saveToDatabase({ symptoms: selectedSymptoms });
+     setHasSymptomsSaved(true);
+     setIsSymptomsEditing(false);
+   };
 
   const handleSaveSport = async () => {
-    await saveToDatabase({ activity: selectedSports });
-  };
-
-  const handleSaveCycle = async () => {
-    await saveToDatabase({
-      period: { active: hasPeriod === 'yes', flow: 'medium', pain: 'none', notes: '' }
-    });
-  };
-
-  const handleSaveMeals = async () => {
-    // Validate required main meals
-    const missing: string[] = [];
-    if (!mealData.morning) missing.push('Morning');
-    if (!mealData.afternoon) missing.push('Afternoon');
-    if (!mealData.evening) missing.push('Evening');
-    if (missing.length > 0) {
-      Alert.alert('Missing required meals', `Please fill: ${missing.join(', ')}`);
-      // Continue to save partial data
-    }
-
-    const date = selectedDate.toISOString().split('T')[0];
-    const baseRecord: DailyRecord = {
-      date,
-      meals: mealData,
-      hydration: {
-        count: Object.values(mealData.drinkQuantities || {}).reduce((a, b) => a + b, 0),
-        types: (mealData.drinkType || '').split(',').filter(Boolean),
-        notes: ''
-      }
-    } as DailyRecord;
-    // Respect per-meal overrides; manualCalories (global) removed per user request
-    const totalCalories = (() => {
-      const auto = computeAutoCalories();
-      const sumOverrides = Object.values(perMealOverrides).reduce((a, b) => a + (b || 0), 0);
-      // If any override set, recompute by combining overridden sections + auto for others
-      if (Object.keys(perMealOverrides).length === 0) return auto;
-      let sum = 0;
-      (['morning','afternoon','evening','snack'] as const).forEach(section => {
-        if (typeof perMealOverrides[section] === 'number') {
-          sum += perMealOverrides[section] as number;
-        } else {
-          const raw = (mealData[section as keyof MealData] as string) || '';
-          if (raw && raw !== 'Fasting') {
-            const entries = raw.split(',').filter(Boolean).map(name => ({ name, quantity: mealQuantities[section][name] ?? 1 }));
-            sum += estimateCaloriesForEntries(entries);
-          }
-        }
+    const totalMinutes = Object.values(sportDurations || {}).reduce((a, b) => a + (b || 0), 0);
+    await saveToDatabase({ activity: selectedSports, activityMinutes: totalMinutes });
+    setHasSportSaved(true);
+    setIsSportEditing(false);
+    if (sameSportRoutine && user) {
+      const updated = { ...sportRoutineByWeekday } as Record<number, { activities: string[]; durations: Record<string, number> }>;
+      sportSelectedDays.forEach((weekday) => {
+        updated[weekday] = { activities: selectedSports, durations: sportDurations };
       });
-      return Math.round(sum);
-    })();
-    await saveToDatabase({
-      meals: mealData,
-      hydration: baseRecord.hydration,
-      nutrition: { totalCalories, perMealOverrides }
-    });
+      setSportRoutineByWeekday(updated);
+      try { await AsyncStorage.setItem(`sportRoutineByWeekday:${user.id}`, JSON.stringify(updated)); } catch {}
+    }
   };
+
+    const handleSaveCycle = async () => {
+     await saveToDatabase({
+       period: { active: hasPeriod === 'yes', flow: 'medium', pain: 'none', notes: '' }
+     });
+     setHasCycleSaved(true);
+     setIsCycleEditing(false);
+   };
+
+    const handleSaveMeals = async () => {
+     // Validate required main meals
+     const missing: string[] = [];
+     if (!mealData.morning) missing.push('Morning');
+     if (!mealData.afternoon) missing.push('Afternoon');
+     if (!mealData.evening) missing.push('Evening');
+     if (missing.length > 0) {
+       Alert.alert('Missing required meals', `Please fill: ${missing.join(', ')}`);
+       // Continue to save partial data
+     }
+ 
+     const date = selectedDate.toISOString().split('T')[0];
+     const baseRecord: DailyRecord = {
+       date,
+       meals: mealData,
+       hydration: {
+         count: Object.values(mealData.drinkQuantities || {}).reduce((a, b) => a + b, 0),
+         types: (mealData.drinkType || '').split(',').filter(Boolean),
+         notes: ''
+       }
+     } as DailyRecord;
+     // Respect per-meal overrides; manualCalories (global) removed per user request
+     const totalCalories = (() => {
+       const auto = computeAutoCalories();
+       const sumOverrides = Object.values(perMealOverrides).reduce((a, b) => a + (b || 0), 0);
+       // If any override set, recompute by combining overridden sections + auto for others
+       if (Object.keys(perMealOverrides).length === 0) return auto;
+       let sum = 0;
+       (['morning','afternoon','evening','snack'] as const).forEach(section => {
+         if (typeof perMealOverrides[section] === 'number') {
+           sum += perMealOverrides[section] as number;
+         } else {
+           const raw = (mealData[section as keyof MealData] as string) || '';
+           if (raw && raw !== 'Fasting') {
+             const entries = raw.split(',').filter(Boolean).map(name => ({ name, quantity: mealQuantities[section][name] ?? 1 }));
+             sum += estimateCaloriesForEntries(entries);
+           }
+         }
+       });
+       return Math.round(sum);
+     })();
+     await saveToDatabase({
+       meals: mealData,
+       hydration: baseRecord.hydration,
+       nutrition: { totalCalories, perMealOverrides }
+     });
+     setHasMealsSaved(true);
+     setIsMealsEditing(false);
+   };
 
   // Vision meal analysis integration
   const requestMediaPermissions = async () => {
@@ -559,18 +671,29 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
         <Ionicons name="medical-outline" size={24} color="#ef4444" />
         <Text style={trackingStyles.contentTitle}>Symptoms</Text>
       </View>
-      <Text style={trackingStyles.contentSubtitle}>Select any symptoms you're experiencing today</Text>
-      <MultiSelect
-        label="Symptoms"
-        options={SYMPTOMS}
-        value={selectedSymptoms}
-        onChange={setSelectedSymptoms}
-        allowOther
-        category="symptoms"
-      />
-      <TouchableOpacity onPress={handleSaveSymptoms} style={trackingStyles.saveButton}>
-        <Text style={trackingStyles.saveButtonText}>Save Symptoms</Text>
-      </TouchableOpacity>
+      {hasSymptomsSaved && !isSymptomsEditing ? (
+        <View style={[trackingStyles.sportActivityCard, { backgroundColor: '#fff7ed', borderColor: '#fed7aa' }]}>
+          <Text style={[trackingStyles.sportActivityTitle, { marginBottom: 8 }]}>Data is already saved for this day.</Text>
+          <TouchableOpacity onPress={() => setIsSymptomsEditing(true)} style={[trackingStyles.saveButton, { backgroundColor: '#e5e7eb' }]}>
+            <Text style={[trackingStyles.saveButtonText, { color: '#111827' }]}>Edit</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          <Text style={trackingStyles.contentSubtitle}>Select any symptoms you're experiencing today</Text>
+          <MultiSelect
+            label="Symptoms"
+            options={SYMPTOMS}
+            value={selectedSymptoms}
+            onChange={setSelectedSymptoms}
+            allowOther
+            category="symptoms"
+          />
+          <TouchableOpacity onPress={handleSaveSymptoms} style={trackingStyles.saveButton}>
+            <Text style={trackingStyles.saveButtonText}>Save Symptoms</Text>
+          </TouchableOpacity>
+        </>
+      )}
     </View>
   );
 
@@ -589,6 +712,16 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
             </View>
           )}
         </View>
+
+        {hasMealsSaved && !isMealsEditing ? (
+          <View style={[trackingStyles.sportActivityCard, { backgroundColor: '#fffbeb', borderColor: '#fde68a' }]}>
+            <Text style={[trackingStyles.sportActivityTitle, { marginBottom: 8 }]}>Data is already saved for this day.</Text>
+            <TouchableOpacity onPress={() => setIsMealsEditing(true)} style={[trackingStyles.saveButton, { backgroundColor: '#e5e7eb' }]}>
+              <Text style={[trackingStyles.saveButtonText, { color: '#111827' }]}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
 
         {/* Photo analysis trigger for meal/snack sections */}
         {(currentSection.type === 'meal' || currentSection.type === 'snack') && (
@@ -977,6 +1110,8 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
             </View>
           </View>
         </Modal>
+        </>
+        )}
       </View>
     );
   };
@@ -990,50 +1125,99 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
           <Text style={trackingStyles.optionalBadgeText}>OPTIONAL</Text>
         </View>
       </View>
-      <View style={trackingStyles.routineToggleContainer}>
-        <TouchableOpacity onPress={() => setSameSportRoutine(!sameSportRoutine)} style={trackingStyles.routineToggle}>
-          <View style={[trackingStyles.routineCheckbox, sameSportRoutine ? trackingStyles.routineCheckboxSelected : trackingStyles.routineCheckboxUnselected]}>
-            {sameSportRoutine && <Ionicons name="checkmark" size={12} color="white" />}
+      {hasSportSaved && !isSportEditing ? (
+        <View style={[trackingStyles.sportActivityCard, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
+          <Text style={[trackingStyles.sportActivityTitle, { marginBottom: 8 }]}>Data is already saved for this day.</Text>
+          <TouchableOpacity onPress={() => setIsSportEditing(true)} style={[trackingStyles.saveButton, { backgroundColor: '#e5e7eb' }]}>
+            <Text style={[trackingStyles.saveButtonText, { color: '#111827' }]}>Edit</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          <View style={trackingStyles.routineToggleContainer}>
+            <TouchableOpacity onPress={() => setSameSportRoutine(!sameSportRoutine)} style={trackingStyles.routineToggle}>
+              <View style={[trackingStyles.routineCheckbox, sameSportRoutine ? trackingStyles.routineCheckboxSelected : trackingStyles.routineCheckboxUnselected]}>
+                {sameSportRoutine && <Ionicons name="checkmark" size={12} color="white" />}
+              </View>
+              <Text style={trackingStyles.routineToggleText}>Same routine</Text>
+            </TouchableOpacity>
+            {sameSportRoutine && (
+              <Text style={trackingStyles.routineHint}>Pre-filled from your weekly routine</Text>
+            )}
           </View>
-          <Text style={trackingStyles.routineToggleText}>Same routine</Text>
-        </TouchableOpacity>
-        {sameSportRoutine && (
-          <Text style={trackingStyles.routineHint}>Pre-filled from your saved routine</Text>
-        )}
-      </View>
-      <MultiSelect
-        label="Activity Type"
-        options={sportActivities}
-        value={selectedSports}
-        onChange={setSelectedSports}
-        allowOther
-        category="sports"
-      />
-      {selectedSports.length > 0 && (
-        <View style={trackingStyles.sportActivitiesContainer}>
-          {selectedSports.map(activity => (
-            <View key={activity} style={trackingStyles.sportActivityCard}>
-              <Text style={trackingStyles.sportActivityTitle}>{activity}</Text>
-              <View style={trackingStyles.sportActivityRow}>
-                <Text style={trackingStyles.sportActivityLabel}>Duration (minutes):</Text>
-                <TextInput
-                  value={String(sportDurations[activity] || '')}
-                  onChangeText={(text) => {
-                    const duration = parseInt(text) || 0;
-                    setSportDurations(prev => ({ ...prev, [activity]: duration }));
-                  }}
-                  keyboardType="numeric"
-                  style={trackingStyles.sportActivityInput}
-                  placeholder="30"
-                />
+          {sameSportRoutine && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, idx) => (
+                <TouchableOpacity key={d} onPress={() => {
+                  setSportEditDay(idx);
+                  const tpl = sportRoutineByWeekday[idx];
+                  if (tpl) { setSelectedSports(tpl.activities); setSportDurations(tpl.durations || {}); }
+                }} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: sportEditDay===idx?'#10b981':'#e5e7eb', backgroundColor: sportEditDay===idx?'#d1fae5':'#ffffff' }}>
+                  <Text style={{ color: sportEditDay===idx?'#065f46':'#374151', fontWeight: '600' }}>{d}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {sameSportRoutine && (
+            <View style={{ marginTop: 6 }}>
+              <Text style={{ color: '#374151', marginBottom: 6, fontWeight: '600' }}>Copy to days on save:</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, idx) => (
+                  <TouchableOpacity key={d} onPress={() => {
+                    setSportSelectedDays(prev => prev.includes(idx) ? prev.filter(x => x !== idx) : [...prev, idx]);
+                  }} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: sportSelectedDays.includes(idx)?'#10b981':'#e5e7eb', backgroundColor: sportSelectedDays.includes(idx)?'#d1fae5':'#ffffff' }}>
+                    <Text style={{ color: sportSelectedDays.includes(idx)?'#065f46':'#374151', fontWeight: '600' }}>{d}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TouchableOpacity onPress={() => setSportSelectedDays([1,2,3,4,5])} style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#f3f4f6', borderRadius: 12 }}>
+                  <Text style={{ color: '#374151', fontWeight: '600' }}>Mon–Fri</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setSportSelectedDays([0,1,2,3,4,5,6])} style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#f3f4f6', borderRadius: 12 }}>
+                  <Text style={{ color: '#374151', fontWeight: '600' }}>Everyday</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setSportSelectedDays([sportEditDay])} style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#f3f4f6', borderRadius: 12 }}>
+                  <Text style={{ color: '#374151', fontWeight: '600' }}>Only this day</Text>
+                </TouchableOpacity>
               </View>
             </View>
-          ))}
-        </View>
+          )}
+          <MultiSelect
+            label="Activity Type"
+            options={sportActivities}
+            value={selectedSports}
+            onChange={setSelectedSports}
+            allowOther
+            category="sports"
+          />
+          {selectedSports.length > 0 && (
+            <View style={trackingStyles.sportActivitiesContainer}>
+              {selectedSports.map(activity => (
+                <View key={activity} style={trackingStyles.sportActivityCard}>
+                  <Text style={trackingStyles.sportActivityTitle}>{activity}</Text>
+                  <View style={trackingStyles.sportActivityRow}>
+                    <Text style={trackingStyles.sportActivityLabel}>Duration (minutes):</Text>
+                    <TextInput
+                      value={String(sportDurations[activity] || '')}
+                      onChangeText={(text) => {
+                        const duration = parseInt(text) || 0;
+                        setSportDurations(prev => ({ ...prev, [activity]: duration }));
+                      }}
+                      keyboardType="numeric"
+                      style={trackingStyles.sportActivityInput}
+                      placeholder="30"
+                    />
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+          <TouchableOpacity onPress={handleSaveSport} style={trackingStyles.saveButton}>
+            <Text style={trackingStyles.saveButtonText}>Save Activity</Text>
+          </TouchableOpacity>
+        </>
       )}
-      <TouchableOpacity onPress={handleSaveSport} style={trackingStyles.saveButton}>
-        <Text style={trackingStyles.saveButtonText}>Save Activity</Text>
-      </TouchableOpacity>
     </View>
   );
 
@@ -1046,30 +1230,41 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
           <Text style={trackingStyles.optionalBadgeText}>OPTIONAL</Text>
         </View>
       </View>
-      <Text style={trackingStyles.contentSubtitle}>Are you currently on your period?</Text>
-      <View style={trackingStyles.cycleOptionsContainer}>
-        {[
-          { key: 'yes', label: 'Yes, I am on my period' },
-          { key: 'no', label: 'No, I am not on my period' },
-          { key: 'none', label: 'Not applicable' }
-        ].map(option => (
-          <TouchableOpacity
-            key={option.key}
-            onPress={() => setHasPeriod(option.key as any)}
-            style={[trackingStyles.cycleOption, hasPeriod === option.key ? trackingStyles.cycleOptionSelected : trackingStyles.cycleOptionUnselected]}
-          >
-            <View style={[trackingStyles.cycleOptionRadio, hasPeriod === option.key ? trackingStyles.cycleOptionRadioSelected : trackingStyles.cycleOptionRadioUnselected]}>
-              {hasPeriod === option.key && <Ionicons name="checkmark" size={12} color="white" />}
-            </View>
-            <Text style={hasPeriod === option.key ? trackingStyles.cycleOptionTextSelected : trackingStyles.cycleOptionTextUnselected}>
-              {option.label}
-            </Text>
+      {hasCycleSaved && !isCycleEditing ? (
+        <View style={[trackingStyles.sportActivityCard, { backgroundColor: '#faf5ff', borderColor: '#e9d5ff' }]}>
+          <Text style={[trackingStyles.sportActivityTitle, { marginBottom: 8 }]}>Data is already saved for this day.</Text>
+          <TouchableOpacity onPress={() => setIsCycleEditing(true)} style={[trackingStyles.saveButton, { backgroundColor: '#e5e7eb' }]}>
+            <Text style={[trackingStyles.saveButtonText, { color: '#111827' }]}>Edit</Text>
           </TouchableOpacity>
-        ))}
-      </View>
-      <TouchableOpacity onPress={handleSaveCycle} style={trackingStyles.saveButton}>
-        <Text style={trackingStyles.saveButtonText}>Save Cycle Info</Text>
-      </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          <Text style={trackingStyles.contentSubtitle}>Are you currently on your period?</Text>
+          <View style={trackingStyles.cycleOptionsContainer}>
+            {[
+              { key: 'yes', label: 'Yes, I am on my period' },
+              { key: 'no', label: 'No, I am not on my period' },
+              { key: 'none', label: 'Not applicable' }
+            ].map(option => (
+              <TouchableOpacity
+                key={option.key}
+                onPress={() => setHasPeriod(option.key as any)}
+                style={[trackingStyles.cycleOption, hasPeriod === option.key ? trackingStyles.cycleOptionSelected : trackingStyles.cycleOptionUnselected]}
+              >
+                <View style={[trackingStyles.cycleOptionRadio, hasPeriod === option.key ? trackingStyles.cycleOptionRadioSelected : trackingStyles.cycleOptionRadioUnselected]}>
+                  {hasPeriod === option.key && <Ionicons name="checkmark" size={12} color="white" />}
+                </View>
+                <Text style={hasPeriod === option.key ? trackingStyles.cycleOptionTextSelected : trackingStyles.cycleOptionTextUnselected}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TouchableOpacity onPress={handleSaveCycle} style={trackingStyles.saveButton}>
+            <Text style={trackingStyles.saveButtonText}>Save Cycle Info</Text>
+          </TouchableOpacity>
+        </>
+      )}
     </View>
   );
 
@@ -1082,62 +1277,122 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
           <Text style={trackingStyles.optionalBadgeText}>OPTIONAL</Text>
         </View>
       </View>
-      <View style={trackingStyles.routineToggleContainer}>
-        <TouchableOpacity onPress={() => setSameSleepRoutine(!sameSleepRoutine)} style={trackingStyles.routineToggle}>
-          <View style={[trackingStyles.routineCheckbox, sameSleepRoutine ? trackingStyles.routineCheckboxSelected : trackingStyles.routineCheckboxUnselected]}>
-            {sameSleepRoutine && <Ionicons name="checkmark" size={12} color="white" />}
+      {hasSleepSaved && !isSleepEditing ? (
+        <View style={[trackingStyles.sportActivityCard, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }]}>
+          <Text style={[trackingStyles.sportActivityTitle, { marginBottom: 8 }]}>Data is already saved for this day.</Text>
+          <TouchableOpacity onPress={() => setIsSleepEditing(true)} style={[trackingStyles.saveButton, { backgroundColor: '#e5e7eb' }]}>
+            <Text style={[trackingStyles.saveButtonText, { color: '#111827' }]}>Edit</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          <View style={trackingStyles.routineToggleContainer}>
+            <TouchableOpacity onPress={() => setSameSleepRoutine(!sameSleepRoutine)} style={trackingStyles.routineToggle}>
+              <View style={[trackingStyles.routineCheckbox, sameSleepRoutine ? trackingStyles.routineCheckboxSelected : trackingStyles.routineCheckboxUnselected]}>
+                {sameSleepRoutine && <Ionicons name="checkmark" size={12} color="white" />}
+              </View>
+              <Text style={trackingStyles.routineToggleText}>Same routine</Text>
+            </TouchableOpacity>
+            {sameSleepRoutine && (
+              <Text style={trackingStyles.routineHint}>Pre-filled from your weekly routine</Text>
+            )}
           </View>
-          <Text style={trackingStyles.routineToggleText}>Same routine</Text>
-        </TouchableOpacity>
-        {sameSleepRoutine && (
-          <Text style={trackingStyles.routineHint}>Pre-filled from your saved routine</Text>
-        )}
-      </View>
-      <View style={trackingStyles.sportActivityCard}>
-        <Text style={trackingStyles.sportActivityTitle}>Sleep Schedule</Text>
-        <View style={trackingStyles.sportActivityRow}>
-          <Text style={trackingStyles.sportActivityLabel}>Bedtime:</Text>
-          <TextInput value={sleepData.bedTime} onChangeText={(text) => setSleepData(prev => ({ ...prev, bedTime: text }))} style={trackingStyles.sportActivityInput} placeholder="e.g., 23:00" />
-        </View>
-        <View style={trackingStyles.sportActivityRow}>
-          <Text style={trackingStyles.sportActivityLabel}>Wake time:</Text>
-          <TextInput value={sleepData.wakeTime} onChangeText={(text) => setSleepData(prev => ({ ...prev, wakeTime: text }))} style={trackingStyles.sportActivityInput} placeholder="e.g., 07:00" />
-        </View>
-        <View style={trackingStyles.sportActivityRow}>
-          <Text style={trackingStyles.sportActivityLabel}>Sleep quality (1-10):</Text>
-          <TextInput
-            value={String(sleepData.sleepQuality || '')}
-            onChangeText={(text) => {
-              const quality = parseInt(text) || 0;
-              setSleepData(prev => ({ ...prev, sleepQuality: Math.max(0, Math.min(10, quality)) }));
-            }}
-            keyboardType="numeric"
-            style={trackingStyles.sportActivityInput}
-            placeholder="8"
-          />
-        </View>
-        <View style={trackingStyles.sportActivityRow}>
-          <Text style={trackingStyles.sportActivityLabel}>Duration:</Text>
-          <View style={[trackingStyles.sportActivityInput, { justifyContent: 'center', backgroundColor: '#f3f4f6' }]}>
-            <Text style={{ color: '#6b7280', fontSize: 16 }}>
-              {sleepData.sleepDuration > 0 ? `${sleepData.sleepDuration}h` : 'Auto-calculated'}
-            </Text>
+          {sameSleepRoutine && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, idx) => (
+                <TouchableOpacity key={d} onPress={() => {
+                  setSleepEditDay(idx);
+                  const tpl = sleepRoutineByWeekday[idx];
+                  if (tpl) setSleepData({ ...tpl });
+                }} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: sleepEditDay===idx?'#7c3aed':'#e5e7eb', backgroundColor: sleepEditDay===idx?'#ede9fe':'#ffffff' }}>
+                  <Text style={{ color: sleepEditDay===idx?'#4c1d95':'#374151', fontWeight: '600' }}>{d}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {sameSleepRoutine && (
+            <View style={{ marginTop: 6 }}>
+              <Text style={{ color: '#374151', marginBottom: 6, fontWeight: '600' }}>Copy to days on save:</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, idx) => (
+                  <TouchableOpacity key={d} onPress={() => {
+                    setSleepSelectedDays(prev => prev.includes(idx) ? prev.filter(x => x !== idx) : [...prev, idx]);
+                  }} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: sleepSelectedDays.includes(idx)?'#7c3aed':'#e5e7eb', backgroundColor: sleepSelectedDays.includes(idx)?'#ede9fe':'#ffffff' }}>
+                    <Text style={{ color: sleepSelectedDays.includes(idx)?'#4c1d95':'#374151', fontWeight: '600' }}>{d}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TouchableOpacity onPress={() => setSleepSelectedDays([1,2,3,4,5])} style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#f3f4f6', borderRadius: 12 }}>
+                  <Text style={{ color: '#374151', fontWeight: '600' }}>Mon–Fri</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setSleepSelectedDays([0,1,2,3,4,5,6])} style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#f3f4f6', borderRadius: 12 }}>
+                  <Text style={{ color: '#374151', fontWeight: '600' }}>Everyday</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setSleepSelectedDays([sleepEditDay])} style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#f3f4f6', borderRadius: 12 }}>
+                  <Text style={{ color: '#374151', fontWeight: '600' }}>Only this day</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+          <View style={trackingStyles.sportActivityCard}>
+            <Text style={trackingStyles.sportActivityTitle}>Sleep Schedule</Text>
+            <View style={trackingStyles.sportActivityRow}>
+              <Text style={trackingStyles.sportActivityLabel}>Bedtime:</Text>
+              <TextInput value={sleepData.bedTime} onChangeText={(text) => setSleepData(prev => ({ ...prev, bedTime: text }))} style={trackingStyles.sportActivityInput} placeholder="e.g., 23:00" />
+            </View>
+            <View style={trackingStyles.sportActivityRow}>
+              <Text style={trackingStyles.sportActivityLabel}>Wake time:</Text>
+              <TextInput value={sleepData.wakeTime} onChangeText={(text) => setSleepData(prev => ({ ...prev, wakeTime: text }))} style={trackingStyles.sportActivityInput} placeholder="e.g., 07:00" />
+            </View>
+            <View style={trackingStyles.sportActivityRow}>
+              <Text style={trackingStyles.sportActivityLabel}>Sleep quality (1-10):</Text>
+              <TextInput
+                value={String(sleepData.sleepQuality || '')}
+                onChangeText={(text) => {
+                  const quality = parseInt(text) || 0;
+                  setSleepData(prev => ({ ...prev, sleepQuality: Math.max(0, Math.min(10, quality)) }));
+                }}
+                keyboardType="numeric"
+                style={trackingStyles.sportActivityInput}
+                placeholder="8"
+              />
+            </View>
+            <View style={trackingStyles.sportActivityRow}>
+              <Text style={trackingStyles.sportActivityLabel}>Duration:</Text>
+              <View style={[trackingStyles.sportActivityInput, { justifyContent: 'center', backgroundColor: '#f3f4f6' }]}>
+                <Text style={{ color: '#6b7280', fontSize: 16 }}>
+                  {sleepData.sleepDuration > 0 ? `${sleepData.sleepDuration}h` : 'Auto-calculated'}
+                </Text>
+              </View>
+            </View>
           </View>
-        </View>
-      </View>
-      <TouchableOpacity onPress={async () => {
-        let calculatedDuration = sleepData.sleepDuration;
-        if (sleepData.bedTime && sleepData.wakeTime) {
-          const bedTime = new Date(`2024-01-01 ${sleepData.bedTime}`);
-          let wakeTime = new Date(`2024-01-01 ${sleepData.wakeTime}`);
-          if (wakeTime < bedTime) wakeTime = new Date(`2024-01-02 ${sleepData.wakeTime}`);
-          const diffMs = wakeTime.getTime() - bedTime.getTime();
-          calculatedDuration = Math.round(diffMs / (1000 * 60 * 60) * 10) / 10;
-        }
-        await saveToDatabase({ sleep: { ...sleepData, sleepDuration: calculatedDuration } });
-      }} style={trackingStyles.saveButton}>
-        <Text style={trackingStyles.saveButtonText}>Save Sleep Data</Text>
-      </TouchableOpacity>
+          <TouchableOpacity onPress={async () => {
+            let calculatedDuration = sleepData.sleepDuration;
+            if (sleepData.bedTime && sleepData.wakeTime) {
+              const bedTime = new Date(`2024-01-01 ${sleepData.bedTime}`);
+              let wakeTime = new Date(`2024-01-01 ${sleepData.wakeTime}`);
+              if (wakeTime < bedTime) wakeTime = new Date(`2024-01-02 ${sleepData.wakeTime}`);
+              const diffMs = wakeTime.getTime() - bedTime.getTime();
+              calculatedDuration = Math.round(diffMs / (1000 * 60 * 60) * 10) / 10;
+            }
+            await saveToDatabase({ sleep: { ...sleepData, sleepDuration: calculatedDuration } });
+            setHasSleepSaved(true);
+            setIsSleepEditing(false);
+            if (sameSleepRoutine && user) {
+              const updated = { ...sleepRoutineByWeekday } as Record<number, { bedTime: string; wakeTime: string; sleepQuality: number; sleepDuration: number }>;
+              const payload = { ...sleepData, sleepDuration: calculatedDuration };
+              sleepSelectedDays.forEach((weekday) => {
+                updated[weekday] = payload;
+              });
+              setSleepRoutineByWeekday(updated);
+              try { await AsyncStorage.setItem(`sleepRoutineByWeekday:${user.id}`, JSON.stringify(updated)); } catch {}
+            }
+          }} style={trackingStyles.saveButton}>
+            <Text style={trackingStyles.saveButtonText}>Save Sleep Data</Text>
+          </TouchableOpacity>
+        </>
+      )}
     </View>
   );
 

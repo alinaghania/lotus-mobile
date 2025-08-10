@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, Alert, Dimensions, TextInput } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Modal, Alert, Dimensions, TextInput, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -87,12 +87,35 @@ export default function HomeScreen() {
     endolots: 150,
     healthPoints: 100
   });
+  const [claimedForDate, setClaimedForDate] = useState<Record<string, boolean>>({});
+  const collectAnimsRef = React.useRef<Record<string, Animated.Value>>({});
+  const getCollectAnim = (id: string) => {
+    if (!collectAnimsRef.current[id]) collectAnimsRef.current[id] = new Animated.Value(1);
+    return collectAnimsRef.current[id];
+  };
+  const selectedDateStr = useMemo(() => selectedDate.toISOString().split('T')[0], [selectedDate]);
+  const getClaimKey = (taskId: string) => `claim_${user?.id || 'anon'}_${selectedDateStr}_${taskId}`;
+  const [tasks, setTasks] = useState<Task[]>([]);
+  // Load claims for this date when tasks or date changes
+  useEffect(() => {
+    const loadClaims = async () => {
+      const map: Record<string, boolean> = {};
+      await Promise.all((tasks || []).map(async (t) => {
+        try {
+          const v = await AsyncStorage.getItem(getClaimKey(t.id));
+          map[t.id] = v === '1';
+        } catch {}
+      }));
+      setClaimedForDate(map);
+    };
+    loadClaims();
+  }, [tasks, selectedDateStr, user]);
   const [streak, setStreak] = useState(0);
   const [showCalendar, setShowCalendar] = useState(false);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [dailyRecord, setDailyRecord] = useState<DailyRecord | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [weightInput, setWeightInput] = useState('');
+  const [showWeightModal, setShowWeightModal] = useState(false);
   const [trackingProgress, setTrackingProgress] = useState<TrackingProgress>({
     meals: 0,
     symptoms: 0,
@@ -162,7 +185,7 @@ export default function HomeScreen() {
 
   // Generate tasks based on tracking progress (20% per tab)
   const generateTasksFromProgress = (progress: TrackingProgress): Task[] => {
-    return [
+    const tasks: Task[] = [
       {
         id: '1',
         text: 'Log your sleep schedule',
@@ -199,6 +222,21 @@ export default function HomeScreen() {
         required: true
       }
     ];
+    return tasks;
+  };
+
+  const saveWeight = async (kg: number) => {
+    if (!user) return;
+    try {
+      const profile = await profileService.getProfile(user.id);
+      const now = selectedDate.toISOString().split('T')[0];
+      const weights = (profile?.weights || []).filter(w => w.date !== now);
+      weights.push({ date: now, kg });
+      const merged = await profileService.upsertProfile(user.id, { weights, weightKg: kg });
+      setProfile(merged);
+      setShowWeightModal(false);
+      Alert.alert('Saved', 'Weight saved.');
+    } catch {}
   };
 
   // Load data on component mount and when selectedDate changes
@@ -525,7 +563,8 @@ export default function HomeScreen() {
                       />
                       <Text style={[
                         styles.taskText,
-                        task.completed ? styles.taskTextCompleted : styles.taskTextDefault
+                        task.completed ? styles.taskTextCompleted : styles.taskTextDefault,
+                        claimedForDate[task.id] ? { textDecorationLine: 'line-through', textDecorationColor: '#ef4444', color: '#ef4444' } : null
                       ]}>
                         {task.text}
                       </Text>
@@ -535,70 +574,104 @@ export default function HomeScreen() {
                         </View>
                       )}
                     </View>
+                    {task.completed && !claimedForDate[task.id] && (
+                      <Animated.View style={{ transform: [{ scale: getCollectAnim(task.id) }] }}>
+                        <TouchableOpacity onPress={async () => {
+                          if (claimedForDate[task.id]) return;
+                          const anim = getCollectAnim(task.id);
+                          const pulse = [
+                            Animated.timing(anim, { toValue: 0.9, duration: 70, useNativeDriver: true }),
+                            Animated.spring(anim, { toValue: 1, friction: 3, tension: 160, useNativeDriver: true })
+                          ];
+                          Animated.sequence([...pulse, ...pulse, ...pulse]).start();
+                          setTimeout(async () => {
+                            if (claimedForDate[task.id]) return;
+                            setClaimedForDate(prev => ({ ...prev, [task.id]: true }));
+                            try { await AsyncStorage.setItem(getClaimKey(task.id), '1'); } catch {}
+                            setCharacter(prev => ({ ...prev, endolots: (prev.endolots || 0) + 1 } as any));
+                            try {
+                              await AsyncStorage.setItem('savedCharacter', JSON.stringify({ ...character, endolots: (character.endolots || 0) + 1 }));
+                            } catch {}
+                            Alert.alert('Reward', '+1 Endolot collected');
+                          }, 240);
+                        }} style={{ backgroundColor: '#ffd700', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#b8860b', shadowColor: '#000', shadowOpacity: 0.12, shadowOffset: { width: 0, height: 2 }, shadowRadius: 6, elevation: 2 }}>
+                          <Text style={{ color: '#1f2937', fontSize: 13 }}>💎</Text>
+                          <Text style={{ color: '#1f2937', fontWeight: '800', fontSize: 13 }}>Collect +1</Text>
+                        </TouchableOpacity>
+                      </Animated.View>
+                    )}
                   </View>
-                  
-                  {/* Progress bar for each task */}
-                  <View style={styles.taskProgressBar}>
-                    <View 
-                      style={[
-                        styles.taskProgressFill,
-                        { width: `${Math.min(task.progress, 100)}%` },
-                        task.completed ? styles.taskProgressCompleted : 
-                        task.required ? styles.taskProgressRequired : styles.taskProgressOptional
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.taskProgressText}>
-                    {Math.round(task.progress)}% complete
-                  </Text>
                 </View>
               ))}
             </View>
 
-            {/* Weekly weight task */}
-            {(() => {
-              if (!profile) return null;
-              const dow = profile.weightDayOfWeek ?? -1;
-              const todayDow = new Date().getDay();
-              const lastEntry = (profile.weights || []).slice(-1)[0];
-              const thisWeek = new Date();
-              const startOfWeek = new Date(thisWeek);
-              startOfWeek.setDate(thisWeek.getDate() - thisWeek.getDay());
-              const hasEntryThisWeek = (profile.weights || []).some(w => new Date(w.date) >= startOfWeek);
-              const shouldAskToday = dow === todayDow && !hasEntryThisWeek;
-              if (!shouldAskToday) return null;
-              return (
-                <View style={[styles.taskItem, styles.taskRequired]}>
-                  <View style={styles.taskRow}>
-                    <View style={styles.taskContent}>
-                      <Ionicons name="fitness-outline" size={20} color="#2563eb" />
-                      <Text style={[styles.taskText, styles.taskTextDefault]}>What is your weight?</Text>
-                    </View>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                    <TextInput
-                      value={weightInput}
-                      onChangeText={setWeightInput}
-                      keyboardType="numeric"
-                      style={{ backgroundColor: '#f3f4f6', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, flex: 1, marginRight: 8 }}
-                      placeholder="kg"
-                    />
-                    <TouchableOpacity onPress={async () => {
-                      if (!user) return;
-                      const kg = parseFloat(weightInput || '0');
-                      if (!(kg > 0)) return;
-                      const date = new Date().toISOString().split('T')[0];
-                      const updated = await profileService.upsertProfile(user.id, { weights: [ ...(profile.weights || []), { date, kg } ] });
-                      setProfile(updated);
-                      setWeightInput('');
-                      Alert.alert('Saved', 'Weight entry saved');
-                    }} style={[styles.continueButton, { paddingVertical: 10 }]}>
-                      <Text style={styles.continueButtonText}>Save</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })()}
+                         {/* Monthly weight prompt on the 10th with select box */}
+             {(() => {
+               if (!profile) return null;
+               const dayOfMonth = selectedDate.getDate();
+               if (dayOfMonth !== 10) return null;
+               const today = selectedDate.toISOString().split('T')[0];
+               const already = (profile.weights || []).some(w => w.date === today);
+               return (
+                 <View style={[styles.taskItem, already ? styles.taskCompleted : styles.taskRequired]}>
+                   <View style={styles.taskRow}>
+                     <View style={styles.taskContent}>
+                       <Ionicons name="fitness-outline" size={20} color="#2563eb" />
+                       <Text style={[styles.taskText, already ? { textDecorationLine: 'line-through', textDecorationColor: '#ef4444', color: '#ef4444' } : styles.taskTextDefault]}>
+                                                   What is your weight? {already && (profile?.weightKg ?? 0) > 0 ? `(${profile?.weightKg} kg)` : ''}
+                       </Text>
+                     </View>
+                     {!already && (
+                       <TouchableOpacity onPress={() => setShowWeightModal(true)} style={{ backgroundColor: '#ffd700', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: '#b8860b' }}>
+                         <Text style={{ color: '#1f2937', fontWeight: '800' }}>💎 Collect +1</Text>
+                       </TouchableOpacity>
+                     )}
+                     {already && (
+                       <TouchableOpacity onPress={() => setShowWeightModal(true)} style={{ backgroundColor: '#e5e7eb', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: '#d1d5db' }}>
+                         <Text style={{ color: '#111827', fontWeight: '700' }}>Edit</Text>
+                       </TouchableOpacity>
+                     )}
+                   </View>
+                 </View>
+               );
+             })()}
+
+             {/* Weight select modal */}
+             <Modal visible={showWeightModal} transparent animationType="fade" onRequestClose={() => setShowWeightModal(false)}>
+               <View style={styles.modalOverlay}>
+                 <View style={[styles.modalCard, { maxWidth: 360 }]}>
+                   <Text style={styles.modalTitle}>Select your weight (kg)</Text>
+                   <View style={{ maxHeight: 220, marginTop: 8 }}>
+                     <ScrollView>
+                       {[...Array(151)].map((_, i) => 30 + i).map((kg) => (
+                         <TouchableOpacity key={kg} onPress={() => setWeightInput(String(kg))} style={{ paddingVertical: 10, paddingHorizontal: 12, backgroundColor: weightInput===String(kg)?'#eef2ff':'#ffffff', borderRadius: 8, marginBottom: 6 }}>
+                           <Text style={{ color: '#111827', fontWeight: weightInput===String(kg)?'700':'500' }}>{kg}</Text>
+                         </TouchableOpacity>
+                       ))}
+                     </ScrollView>
+                   </View>
+                   <View style={styles.navigationContainer}>
+                     <TouchableOpacity onPress={() => setShowWeightModal(false)} style={[styles.navButton, styles.navButtonDisabled]}>
+                       <Text style={styles.navButtonTextDisabled}>Cancel</Text>
+                     </TouchableOpacity>
+                     <TouchableOpacity onPress={async () => {
+                       if (!user) return;
+                       const kg = parseFloat(weightInput || '0');
+                       if (!(kg > 0)) return;
+                       const date = selectedDate.toISOString().split('T')[0];
+                       const existing = ((profile?.weights || []) as any[]).filter((w: any) => w.date !== date);
+                       const updated = await profileService.upsertProfile(user.id, { weights: [ ...existing, { date, kg } ], weightKg: kg });
+                       setProfile(updated);
+                       setShowWeightModal(false);
+                       setWeightInput('');
+                       Alert.alert('Saved', 'Weight entry saved');
+                     }} style={[styles.navButton, styles.navButtonPrimary]}>
+                       <Text style={styles.navButtonTextPrimary}>Save</Text>
+                     </TouchableOpacity>
+                   </View>
+                 </View>
+               </View>
+             </Modal>
 
             <TouchableOpacity
               onPress={() => navigation.navigate('Tracking' as never)}
