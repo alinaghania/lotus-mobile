@@ -8,12 +8,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { ActivityIndicator, View } from 'react-native';
 
 // Screens
-import { LoginScreen } from '../screens/auth/LoginScreen';
-import { RegisterScreen } from '../screens/auth/RegisterScreen';
-import { HomeScreen } from '../screens/HomeScreen';
-import { TrackingScreen } from '../screens/TrackingScreen';
-import { AnalyticsScreen } from '../screens/AnalyticsScreen';
-import { ProfileScreen } from '../screens/ProfileScreen';
+import LoginScreen from '../screens/auth/LoginScreen';
+import RegisterScreen from '../screens/auth/RegisterScreen';
+import HomeScreen from '../screens/HomeScreen';
+import TrackingScreen from '../screens/TrackingScreen';
+import AnalyticsScreen from '../screens/AnalyticsScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import LevelsScreen from '../screens/LevelsScreen';
+import DigestiveScreen from '../screens/DigestiveScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -93,7 +95,11 @@ export const AppNavigator = () => {
         }}
       >
         {user ? (
-          <Stack.Screen name="Main" component={MainTabs} />
+          <>
+            <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen name="Levels" component={LevelsScreen} />
+            <Stack.Screen name="DigestiveScreen" component={DigestiveScreen} />
+          </>
         ) : (
           <>
             <Stack.Screen name="Login" component={LoginScreen} />

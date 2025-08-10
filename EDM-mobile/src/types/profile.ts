@@ -21,18 +21,40 @@ export interface WeightEntry { date: string; kg: number; }
 
 export interface UserProfile {
   userId: string;
+  // Personal info
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  dateOfBirth?: string; // DD/MM/YYYY
+
+  // Basic health
   age?: number;
   sex?: Sex;
   weightKg?: number;
+  heightCm?: number;
+
+  // Endometriosis
   hasEndometriosis?: boolean;
+  diagnosisStatus?: 'diagnosed' | 'not_diagnosed' | 'investigation';
   endometriosisType?: string;
+  diagnosisDate?: string; // DD/MM/YYYY
+
   menopause?: boolean;
   cycle?: CycleSettings;
   weightDayOfWeek?: number; // 0-6 Sunday-Saturday
   weights?: WeightEntry[];
+
+  // Conditions and notes
   conditions?: string[];
+  medications?: string; // free text
   allergies?: string[];
-  goals?: string;
+  allergiesNotes?: string; // free text
+
+  // Goals
+  goals?: string; // legacy single string
+  goalsList?: string[]; // new multi-select
+
   routines?: {
     sleep?: SleepRoutine;
     sport?: SportRoutineProfile;

@@ -9,6 +9,8 @@ export type RootStackParamList = {
   Analytics: undefined;
   Tracking: undefined;
   Profile: undefined;
+  Levels: undefined;
+  DigestiveScreen: undefined;
 };
 
 export type NavigationProps = NativeStackNavigationProp<RootStackParamList>;
