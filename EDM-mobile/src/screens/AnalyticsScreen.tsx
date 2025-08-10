@@ -1,12 +1,16 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { useDate } from '../contexts/DateContext';
+import { profileService } from '../services/profileService';
 import { trackingService } from '../services/trackingService';
 import { analyticsService } from '../services/analyticsService';
 import { DailyRecord, TrackingProgress } from '../types/tracking';
 import { analyticsStyles } from '../styles/analyticsStyles';
+import { generateHealthReportPdf } from '../services/pdfService';
+import Svg, { Polyline, Text as SvgText, Rect } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
 
 const SYMPTOMS = [
   'Headache', 'Fatigue', 'Bloating', 'Nausea', 'Joint Pain', 'Skin Issues',
@@ -15,105 +19,178 @@ const SYMPTOMS = [
 ];
 
 type FilterType = 'Last 3 Days' | 'Last Week' | 'Last Month' | 'Custom';
+type Granularity = 'Daily' | 'Weekly' | 'Monthly';
+
+function getRange(selected: FilterType, anchorDate: Date) {
+  const end = anchorDate.toISOString().split('T')[0];
+  const d = new Date(anchorDate);
+  if (selected === 'Last 3 Days') d.setDate(d.getDate() - 2);
+  else if (selected === 'Last Week') d.setDate(d.getDate() - 6);
+  else if (selected === 'Last Month') d.setDate(d.getDate() - 29);
+  const start = d.toISOString().split('T')[0];
+  return { start, end };
+}
+
+function fmt(d: Date) { return d.toISOString().split('T')[0]; }
+
+function buildMonthMatrix(currentMonth: Date): Date[] {
+  const first = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+  const startIdx = first.getDay(); // 0-6
+  const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
+  const days: Date[] = [];
+  for (let i = 0; i < startIdx; i++) days.push(new Date(NaN));
+  for (let d = 1; d <= daysInMonth; d++) days.push(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), d));
+  while (days.length % 7 !== 0) days.push(new Date(NaN));
+  return days;
+}
+
+// Hoisted helpers used by useMemo below
+const weekKey = (dateStr: string) => {
+  const d = new Date(dateStr);
+  const onejan = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil((((d as any) - (onejan as any)) / 86400000 + onejan.getDay() + 1) / 7);
+  return `${d.getFullYear()}-W${week}`;
+};
+
+const monthKey = (dateStr: string) => {
+  const d = new Date(dateStr);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${d.getFullYear()}-${m}`;
+};
+
+const groupCalories = (dates: string[], values: number[], g: Granularity) => {
+  if (g === 'Daily') return { labels: dates.map(d => d.slice(5)), values };
+  const map = new Map<string, { sum: number; count: number }>();
+  dates.forEach((d, i) => {
+    const key = g === 'Weekly' ? weekKey(d) : monthKey(d);
+    const entry = map.get(key) || { sum: 0, count: 0 };
+    entry.sum += values[i] || 0;
+    entry.count += 1;
+    map.set(key, entry);
+  });
+  const entries = Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  return { labels: entries.map(e => e[0]), values: entries.map(e => Math.round((e[1].sum / (e[1].count || 1)) * 10) / 10) };
+};
 
 export default function AnalyticsScreen() {
   const { user } = useAuth();
   const { selectedDate } = useDate();
+  const [, forceUpdate] = useState(0);
   const [selectedFilter, setSelectedFilter] = useState<FilterType>('Last Week');
-  const [selectedSymptom, setSelectedSymptom] = useState('Headache');
+  const [granularity, setGranularity] = useState<Granularity>('Daily');
+  const [showCustom, setShowCustom] = useState(false);
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
+  const [info, setInfo] = useState<Record<string, boolean>>({});
   const [dailyRecord, setDailyRecord] = useState<DailyRecord | null>(null);
   const [trackingProgress, setTrackingProgress] = useState<TrackingProgress>({
     meals: 0,
     symptoms: 0,
     digestive: 0,
-    optional: {
-      sleep: 0,
-      sport: 0,
-      cycle: 0,
-      drinks: 0,
-      snacks: 0
-    }
+    optional: { sleep: 0, sport: 0, cycle: 0, drinks: 0, snacks: 0 }
   });
-
-  // Calculate tracking progress from data (20% per tab) - SAME AS HOME
-  const calculateTrackingProgress = (record: DailyRecord | null): TrackingProgress => {
-    console.log('📊 ANALYTICS: Calculating progress for record:', record);
-    
-    const progress: TrackingProgress = {
-      meals: 0,
-      symptoms: 0,
-      digestive: 0,
-      optional: {
-        sport: 0,
-        cycle: 0,
-        drinks: 0,
-        snacks: 0,
-        sleep: 0
-      }
-    };
-
-    if (!record) {
-      console.log('📊 ANALYTICS: No record, returning 0% progress');
-      return progress;
-    }
-
-    // Sleep (20%)
-    const hasSleepData = record.sleep && (record.sleep.bedTime || record.sleep.wakeTime);
-    progress.optional.sleep = hasSleepData ? 20 : 0;
-    console.log('😴 ANALYTICS: Sleep progress:', progress.optional.sleep);
-
-    // Meals (20%)
-    if (record.meals) {
-      const hasMeals = record.meals.morning || record.meals.afternoon || record.meals.evening;
-      progress.meals = hasMeals ? 20 : 0;
-      console.log('🍽️ ANALYTICS: Meals progress:', progress.meals);
-    }
-
-    // Sport (20%)
-    progress.optional.sport = (record.activity && record.activity.length > 0) ? 20 : 0;
-    console.log('💪 ANALYTICS: Sport progress:', progress.optional.sport);
-
-    // Cycle (20%)
-    progress.optional.cycle = record.period ? 20 : 0;
-    console.log('🌸 ANALYTICS: Cycle progress:', progress.optional.cycle);
-
-    // Symptoms (20%)
-    progress.symptoms = (record.symptoms && record.symptoms.length > 0) ? 20 : 0;
-    console.log('🩺 ANALYTICS: Symptoms progress:', progress.symptoms);
-
-    const totalProgress = progress.meals + progress.symptoms + progress.optional.sleep + progress.optional.sport + progress.optional.cycle;
-    console.log('📊 ANALYTICS: Total calculated progress:', totalProgress, '%');
-
-    return progress;
-  };
-
-  // Load data when component mounts or date changes
+  const [symptomStats, setSymptomStats] = useState<{ name: string; count: number }[]>([]);
+  const [caloriesSeries, setCaloriesSeries] = useState<{ labels: string[]; values: number[]; average: number }>({ labels: [], values: [], average: 0 });
+  const [caloriesDates, setCaloriesDates] = useState<string[]>([]);
+  const [foodsTop, setFoodsTop] = useState<{ labels: string[]; values: number[] }>({ labels: [], values: [] });
+  const [foodSymptomMatrix, setFoodSymptomMatrix] = useState<{ foods: string[]; symptoms: string[]; cooccurrence: number[][] }>({ foods: [], symptoms: [], cooccurrence: [] });
+  const [foodDigestiveCorrelation, setFoodDigestiveCorrelation] = useState<Array<{ name: string; correlationPct: number }>>([]);
+  const [symptomsOverTime, setSymptomsOverTime] = useState<{ labels: string[]; values: number[] }>({ labels: [], values: [] });
+  const [digestiveTrend, setDigestiveTrend] = useState<{ labels: string[]; values: number[] }>({ labels: [], values: [] });
+  const [periodSeries, setPeriodSeries] = useState<{ labels: string[]; withPeriod: number[]; withoutPeriod: number[] }>({ labels: [], withPeriod: [], withoutPeriod: [] });
+  const [cyclePrediction, setCyclePrediction] = useState<{ lastPeriodDate?: string; nextPeriodDate: string; nextOvulationDate: string; cycleLengthDays: number; latenessDays?: number } | null>(null);
+  const [bloatingStats, setBloatingStats] = useState<{ daysWith: number; totalDays: number }>({ daysWith: 0, totalDays: 0 });
+  const bellyScale = React.useRef(new Animated.Value(1)).current;
+  const [weightSeries, setWeightSeries] = useState<{ labels: string[]; values: number[] }>({ labels: [], values: [] });
+  const [kpis, setKpis] = useState<{ sleepAvgH: number; sportAvgH: number; totalDays: number; symptomsAvg: number; caloriesAvg: number }>({ sleepAvgH: 0, sportAvgH: 0, totalDays: 0, symptomsAvg: 0, caloriesAvg: 0 });
+  const BLOATED_IMG = require('../../assets/images/bloat_pic.png');
   useEffect(() => {
-    const loadData = async () => {
-      if (user) {
-        try {
-          const date = selectedDate.toISOString().split('T')[0];
-          console.log('📊 ANALYTICS: Loading data for date:', date);
-          const record = await trackingService.getTrackingByDate(user.id, date);
-          console.log('📦 ANALYTICS: Loaded record:', record);
-          setDailyRecord(record);
-          
-          const progress = calculateTrackingProgress(record);
-          setTrackingProgress(progress);
-        } catch (error) {
-          console.error('❌ ANALYTICS: Error loading tracking data:', error);
-        }
-      }
-    };
-    
-    loadData();
-  }, [user, selectedDate]);
+    let cancelled = false;
+    const load = async () => {
+      if (!user) return;
+      const date = selectedDate.toISOString().split('T')[0];
+      const rec = await trackingService.getTrackingByDate(user.id, date);
+      setDailyRecord(rec);
+      setTrackingProgress(calculateTrackingProgress(rec));
 
-  // Calculate real KPIs based on tracking data
+      const { start, end } = selectedFilter === 'Custom' && customStart && customEnd
+        ? { start: customStart, end: customEnd }
+        : getRange(selectedFilter, selectedDate);
+      const ana = await analyticsService.getAnalytics(user.id, start, end);
+      setSymptomStats(ana.symptomsData);
+      const cal = ana.caloriesData || { average: 0, perDay: [] };
+      setCaloriesDates(cal.perDay.map(d => d.date));
+      setCaloriesSeries({ labels: cal.perDay.map(d => d.date.slice(5)), values: cal.perDay.map(d => d.calories || 0), average: cal.average || 0 });
+      const foods = ana.foodsData || [];
+      setFoodsTop({ labels: foods.slice(0, 5).map(f => f.name), values: foods.slice(0, 5).map(f => f.count) });
+      if (ana.foodSymptomMatrix) setFoodSymptomMatrix(ana.foodSymptomMatrix);
+      if ((ana as any).foodDigestiveCorrelation) setFoodDigestiveCorrelation((ana as any).foodDigestiveCorrelation);
+      if ((ana as any).foodSymptomDetails) (AnalyticsScreen as any)._foodSymptomDetails = (ana as any).foodSymptomDetails;
+      if (ana.symptomsOverTime) setSymptomsOverTime({ labels: ana.symptomsOverTime.map(s => s.date.slice(5)), values: ana.symptomsOverTime.map(s => s.count) });
+      if (ana.digestiveIssuesTrend) setDigestiveTrend({ labels: ana.digestiveIssuesTrend.map(s => s.date.slice(5)), values: ana.digestiveIssuesTrend.map(s => s.count) });
+      if (ana.periodSymptomsSeries) setPeriodSeries({ labels: ana.periodSymptomsSeries.dates.map(d => d.slice(5)), withPeriod: ana.periodSymptomsSeries.withPeriod, withoutPeriod: ana.periodSymptomsSeries.withoutPeriod });
+      if (ana.cyclePrediction) setCyclePrediction(ana.cyclePrediction as any);
+
+      // Compute bloating stats (days with "Bloating" within range)
+      try {
+        const all = await trackingService.getTrackingByUser(user.id);
+        const inRange = all.filter(r => r.date >= start && r.date <= end);
+        const bloatingRegex = /bloat/i;
+        const byDate = new Map<string, boolean>();
+        inRange.forEach(r => {
+          const has = (r.symptoms || []).some(s => bloatingRegex.test(String(s)));
+          byDate.set(r.date, has);
+        });
+        // total days is calendar day count in range
+        const sd = new Date(start);
+        const ed = new Date(end);
+        const diffDays = Math.round((ed.getTime() - sd.getTime()) / 86400000) + 1;
+        const daysWith = Array.from(byDate.values()).filter(Boolean).length;
+        setBloatingStats({ daysWith, totalDays: Math.max(diffDays, 0) });
+
+        // KPIs
+        const sleepDurations = inRange.map(r => r.sleep?.sleepDuration || 0).filter(v => v > 0);
+        const sleepAvgH = sleepDurations.length > 0 ? Math.round((sleepDurations.reduce((a,b)=>a+b,0) / sleepDurations.length) * 10) / 10 : 0;
+        const sportTotals = inRange.map(r => {
+          const anyRec = r as any;
+          const fromMinutes = typeof anyRec.activityMinutes === 'number' ? anyRec.activityMinutes : 0;
+          const fromArray = Array.isArray(anyRec.activityDurations) ? (anyRec.activityDurations as number[]).reduce((a,b)=>a+(b||0),0) : 0;
+          return fromMinutes + fromArray;
+        });
+        const activeDays = sportTotals.filter(m => m > 0).length;
+        const sportAvgH = activeDays > 0 ? Math.round(((sportTotals.reduce((a,b)=>a+b,0) / activeDays) / 60) * 10) / 10 : 0;
+        const symptomsAvg = ana.symptomsOverTime && ana.symptomsOverTime.length > 0 ? Math.round((ana.symptomsOverTime.reduce((a,b)=>a+(b.count||0),0) / ana.symptomsOverTime.length) * 10) / 10 : 0;
+        const caloriesAvg = ana.caloriesData?.average || 0;
+        setKpis({ sleepAvgH, sportAvgH, totalDays: Math.max(diffDays, 0), symptomsAvg, caloriesAvg });
+      } catch {}
+
+      // Load weight history from profile for the selected range
+      try {
+        const profile = await profileService.getProfile(user.id);
+        const weights = (profile?.weights || [])
+          .filter(w => w.date >= start && w.date <= end)
+          .sort((a, b) => a.date.localeCompare(b.date));
+        setWeightSeries({ labels: weights.map(w => w.date.slice(5)), values: weights.map(w => w.kg) });
+      } catch {}
+    };
+    load();
+  }, [user, selectedDate, selectedFilter, customStart, customEnd]);
+
+  // Start belly animation
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bellyScale, { toValue: 1.08, duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(bellyScale, { toValue: 1.0, duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => { loop.stop(); };
+  }, [bellyScale]);
+
   const realKpis = useMemo(() => {
-    const totalProgress = trackingProgress.meals + trackingProgress.symptoms + 
-      trackingProgress.optional.sleep + trackingProgress.optional.sport + trackingProgress.optional.cycle;
-    
+    const totalProgress = trackingProgress.meals + trackingProgress.symptoms + trackingProgress.optional.sleep + trackingProgress.optional.sport + trackingProgress.optional.cycle;
     return {
       sleepProgress: trackingProgress.optional.sleep,
       mealsProgress: trackingProgress.meals,
@@ -124,87 +201,291 @@ export default function AnalyticsScreen() {
     };
   }, [trackingProgress]);
 
-  // Sample symptom trend data - filtered by selectedFilter
-  const symptomTrend = useMemo(() => {
-    const baseData = {
-      'Last 3 Days': {
-        labels: ['Yesterday', 'Today', 'Tomorrow'],
-        counts: [2, 1, 0]
-      },
-      'Last Week': {
-        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-        counts: [3, 1, 2, 4, 1, 0, 2]
-      },
-      'Last Month': {
-        labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-        counts: [8, 12, 6, 10]
-      }
+  const caloriesGrouped = useMemo(() => groupCalories(caloriesDates, caloriesSeries.values, granularity), [caloriesDates, caloriesSeries.values, granularity]);
+  const topSymptoms = useMemo(() => symptomStats.slice(0, 5), [symptomStats]);
+
+  const insights = useMemo(() => {
+    const items: Array<{ title: string; text: string }> = [];
+    // Helper: count of distinct days available across graphs
+    const daysCandidates = [
+      new Set(caloriesGrouped.labels).size,
+      new Set(digestiveTrend.labels).size,
+      new Set(periodSeries.labels || []).size || 0,
+    ];
+    const dataDays = Math.max(0, ...daysCandidates);
+
+    // Food correlation (only if we have at least 2 foods and a meaningful top correlation)
+    const topCorr = foodDigestiveCorrelation[0]?.correlationPct || 0;
+    const reduceFoods = foodDigestiveCorrelation.slice(0, 3).map(f => f.name);
+    if (reduceFoods.length >= 2 && topCorr >= 40) {
+      items.push({
+        title: 'Reduce foods linked to digestive issues',
+        text: `Consider reducing: ${reduceFoods.join(', ')} (based on co-logged digestive symptoms).`
+      });
+    }
+
+    // Calories trend (require >=5 points)
+    if (caloriesGrouped.values.length >= 5) {
+      const first = caloriesGrouped.values[0] || 0;
+      const last = caloriesGrouped.values[caloriesGrouped.values.length - 1] || 0;
+      const delta = Math.round((last - first));
+      const dir = Math.abs(delta) < 20 ? 'stable' : (delta > 0 ? 'trending up' : 'trending down');
+      items.push({ title: 'Calories trend', text: `Your calories are ${dir}${dir !== 'stable' ? ` (${delta >= 0 ? '+' : ''}${delta})` : ''}.` });
+    }
+
+    // Digestive issues baseline (require >=5 days)
+    if (digestiveTrend.values.length >= 5) {
+      const avg = Math.round((digestiveTrend.values.reduce((a, b) => a + (b || 0), 0) / digestiveTrend.values.length) * 10) / 10;
+      items.push({ title: 'Digestive issues frequency', text: `Average ${avg} symptom(s) per day in this period.` });
+    }
+
+    // Symptoms vs period (require at least 3 total symptoms across the period)
+    const sumWith = (periodSeries.withPeriod || []).reduce((a,b)=>a+(b||0),0);
+    const sumWithout = (periodSeries.withoutPeriod || []).reduce((a,b)=>a+(b||0),0);
+    if (sumWith + sumWithout >= 3) {
+      const more = sumWith > sumWithout ? 'during period days' : sumWith < sumWithout ? 'outside period days' : 'equally on both';
+      items.push({ title: 'Symptoms vs period', text: `You log more symptoms ${more}.` });
+    }
+
+    // Cycle prediction (only show if we have at least some tracked days)
+    if (cyclePrediction && dataDays >= 3) {
+      items.push({ title: 'Next important dates', text: `Next period: ${cyclePrediction.nextPeriodDate}; next ovulation: ${cyclePrediction.nextOvulationDate}.` });
+    }
+    return items;
+  }, [foodDigestiveCorrelation, caloriesGrouped, digestiveTrend, periodSeries, cyclePrediction]);
+
+  const toggleInfo = (id: string) => setInfo(prev => ({ ...prev, [id]: !prev[id] }));
+
+  const calculateTrackingProgress = (record: DailyRecord | null): TrackingProgress => {
+    const progress: TrackingProgress = { meals: 0, symptoms: 0, digestive: 0, optional: { sport: 0, cycle: 0, drinks: 0, snacks: 0, sleep: 0 } };
+    if (!record) return progress;
+    const hasSleep = record.sleep && (record.sleep.bedTime || record.sleep.wakeTime);
+    progress.optional.sleep = hasSleep ? 20 : 0;
+    if (record.meals) {
+      const hasMeals = record.meals.morning || record.meals.afternoon || record.meals.evening;
+      progress.meals = hasMeals ? 20 : 0;
+    }
+    progress.optional.sport = (record.activity && record.activity.length > 0) ? 20 : 0;
+    progress.optional.cycle = record.period ? 20 : 0;
+    progress.symptoms = (record.symptoms && record.symptoms.length > 0) ? 20 : 0;
+    return progress;
+  };
+
+  /* helpers moved above for hoisting */
+
+  useEffect(() => {
+    const load = async () => {
+      if (!user) return;
+      const date = selectedDate.toISOString().split('T')[0];
+      const rec = await trackingService.getTrackingByDate(user.id, date);
+      setDailyRecord(rec);
+      setTrackingProgress(calculateTrackingProgress(rec));
+
+      const { start, end } = selectedFilter === 'Custom' && customStart && customEnd
+        ? { start: customStart, end: customEnd }
+        : getRange(selectedFilter, selectedDate);
+      const ana = await analyticsService.getAnalytics(user.id, start, end);
+      setSymptomStats(ana.symptomsData);
+      const cal = ana.caloriesData || { average: 0, perDay: [] };
+      setCaloriesDates(cal.perDay.map(d => d.date));
+      setCaloriesSeries({ labels: cal.perDay.map(d => d.date.slice(5)), values: cal.perDay.map(d => d.calories || 0), average: cal.average || 0 });
+      const foods = ana.foodsData || [];
+      setFoodsTop({ labels: foods.slice(0, 5).map(f => f.name), values: foods.slice(0, 5).map(f => f.count) });
+      if (ana.foodSymptomMatrix) setFoodSymptomMatrix(ana.foodSymptomMatrix);
+      if ((ana as any).foodDigestiveCorrelation) setFoodDigestiveCorrelation((ana as any).foodDigestiveCorrelation);
+      if ((ana as any).foodSymptomDetails) (AnalyticsScreen as any)._foodSymptomDetails = (ana as any).foodSymptomDetails;
+      if (ana.symptomsOverTime) setSymptomsOverTime({ labels: ana.symptomsOverTime.map(s => s.date.slice(5)), values: ana.symptomsOverTime.map(s => s.count) });
+      if (ana.digestiveIssuesTrend) setDigestiveTrend({ labels: ana.digestiveIssuesTrend.map(s => s.date.slice(5)), values: ana.digestiveIssuesTrend.map(s => s.count) });
+      if (ana.periodSymptomsSeries) setPeriodSeries({ labels: ana.periodSymptomsSeries.dates.map(d => d.slice(5)), withPeriod: ana.periodSymptomsSeries.withPeriod, withoutPeriod: ana.periodSymptomsSeries.withoutPeriod });
+      if (ana.cyclePrediction) setCyclePrediction(ana.cyclePrediction as any);
+
+      // Compute bloating stats (days with "Bloating" within range)
+      try {
+        const all = await trackingService.getTrackingByUser(user.id);
+        const inRange = all.filter(r => r.date >= start && r.date <= end);
+        const bloatingRegex = /bloat/i;
+        const byDate = new Map<string, boolean>();
+        inRange.forEach(r => {
+          const has = (r.symptoms || []).some(s => bloatingRegex.test(String(s)));
+          byDate.set(r.date, has);
+        });
+        // total days is calendar day count in range
+        const sd = new Date(start);
+        const ed = new Date(end);
+        const diffDays = Math.round((ed.getTime() - sd.getTime()) / 86400000) + 1;
+        const daysWith = Array.from(byDate.values()).filter(Boolean).length;
+        setBloatingStats({ daysWith, totalDays: Math.max(diffDays, 0) });
+
+        // KPIs
+        const sleepDurations = inRange.map(r => r.sleep?.sleepDuration || 0).filter(v => v > 0);
+        const sleepAvgH = sleepDurations.length > 0 ? Math.round((sleepDurations.reduce((a,b)=>a+b,0) / sleepDurations.length) * 10) / 10 : 0;
+        const sportTotals = inRange.map(r => {
+          const anyRec = r as any;
+          const fromMinutes = typeof anyRec.activityMinutes === 'number' ? anyRec.activityMinutes : 0;
+          const fromArray = Array.isArray(anyRec.activityDurations) ? (anyRec.activityDurations as number[]).reduce((a,b)=>a+(b||0),0) : 0;
+          return fromMinutes + fromArray;
+        });
+        const activeDays = sportTotals.filter(m => m > 0).length;
+        const sportAvgH = activeDays > 0 ? Math.round(((sportTotals.reduce((a,b)=>a+b,0) / activeDays) / 60) * 10) / 10 : 0;
+        const symptomsAvg = ana.symptomsOverTime && ana.symptomsOverTime.length > 0 ? Math.round((ana.symptomsOverTime.reduce((a,b)=>a+(b.count||0),0) / ana.symptomsOverTime.length) * 10) / 10 : 0;
+        const caloriesAvg = ana.caloriesData?.average || 0;
+        setKpis({ sleepAvgH, sportAvgH, totalDays: Math.max(diffDays, 0), symptomsAvg, caloriesAvg });
+      } catch {}
+
+      // Load weight history from profile for the selected range
+      try {
+        const profile = await profileService.getProfile(user.id);
+        const weights = (profile?.weights || [])
+          .filter(w => w.date >= start && w.date <= end)
+          .sort((a, b) => a.date.localeCompare(b.date));
+        setWeightSeries({ labels: weights.map(w => w.date.slice(5)), values: weights.map(w => w.kg) });
+      } catch {}
     };
-    return baseData[selectedFilter];
-  }, [selectedFilter]);
+    load();
+  }, [user, selectedDate, selectedFilter, customStart, customEnd]);
 
-  // Sample digestive issues trend - filtered by selectedFilter
-  const digestiveTrend = useMemo(() => {
-    const baseData = {
-      'Last 3 Days': {
-        labels: ['Yesterday', 'Today', 'Tomorrow'],
-        counts: [1, 0, 0]
-      },
-      'Last Week': {
-        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-        counts: [2, 4, 1, 3, 0, 1, 2]
-      },
-      'Last Month': {
-        labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-        counts: [2, 4, 1, 3]
-      }
-    };
-    return baseData[selectedFilter];
-  }, [selectedFilter]);
+  const InfoBubble = ({ id, title, description }: { id: string; title: string; description: string }) => (
+    info[id] ? (
+      <View style={[analyticsStyles.infoBubble, { top: 0, right: 0 }]}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <Text style={[analyticsStyles.infoBubbleText, { fontWeight: '700' }]}>{title}</Text>
+          <TouchableOpacity onPress={() => toggleInfo(id)}>
+            <Ionicons name="close" size={16} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
+        <Text style={analyticsStyles.infoBubbleText}>{description}</Text>
+      </View>
+    ) : null
+  );
 
-  // Sample food correlation data
-  const foodCorrelation = useMemo(() => [
-    { food: 'Yogurt', correlation: 85 },
-    { food: 'Pasta', correlation: 67 },
-    { food: 'Coffee', correlation: 45 },
-    { food: 'Chocolate', correlation: 23 }
-  ], []);
-
-  // Sample health insights
-  const healthInsights = useMemo(() => ({
-    alerts: [
-      'Average sleep below 6 hours consider improving your sleep routine.',
-      'Low average daily sport duration try to be more active.',
-      'Strong link between "Yogurt" and digestive issues (100% of days). Consider reducing it.'
-    ],
-    insights: [
-      'Symptom frequency is decreasing great progress!'
-    ],
-    recommendations: [
-      'Try to go to bed earlier and establish a consistent sleep schedule.',
-      'Try eliminating Yogurt for a week to see if symptoms improve.'
-    ]
-  }), []);
-
-  const renderSimpleChart = (values: number[], labels: string[], title: string, colorStyle: any) => (
-    <View style={analyticsStyles.chartContainer}>
-      <Text style={analyticsStyles.chartTitle}>{title}</Text>
-      <View style={analyticsStyles.chartItemsContainer}>
-        {values.map((value, index) => (
-          <View key={index} style={analyticsStyles.chartItem}>
-            <Text style={analyticsStyles.chartLabel}>{labels[index]}</Text>
-            <View style={analyticsStyles.chartBarContainer}>
-              <View 
-                style={[
-                  analyticsStyles.chartBar,
-                  colorStyle,
-                  { width: `${(value / Math.max(...values)) * 100}%` }
-                ]}
-              />
+  const renderBarListPanel = (sectionTitle: string, innerTitle: string, labels: string[], values: number[], color: any, infoId?: string, infoText?: string) => {
+    const max = Math.max(...values, 1);
+    return (
+      <View style={analyticsStyles.sectionCard}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={analyticsStyles.sectionTitleLarge}>{sectionTitle}</Text>
+          {infoId && (
+            <TouchableOpacity onPress={() => toggleInfo(infoId)}>
+              <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
+            </TouchableOpacity>
+          )}
+        </View>
+        {infoId && infoText ? <InfoBubble id={infoId} title={sectionTitle} description={infoText} /> : null}
+        <View style={analyticsStyles.innerPanel}>
+          <Text style={analyticsStyles.innerPanelTitle}>{innerTitle}</Text>
+          {labels.map((lab, i) => (
+            <View key={`${sectionTitle}-${lab}-${i}`} style={analyticsStyles.barListRow}>
+              <Text style={analyticsStyles.barListLabel}>{lab}</Text>
+              <View style={analyticsStyles.barListTrack}>
+                <View style={[analyticsStyles.barListFill, color, { width: `${Math.round((values[i] || 0) / max * 100)}%` }]} />
+              </View>
+              <Text style={analyticsStyles.barListValue}>{values[i] || 0}</Text>
             </View>
-            <Text style={analyticsStyles.chartValue}>{value}</Text>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderTwoLines = (labels: string[], a: number[], b: number[]) => (
+    <View style={analyticsStyles.sectionCard}>
+      <View style={analyticsStyles.sectionHeaderRow}>
+        <Text style={analyticsStyles.sectionTitleLarge}>Symptoms Over Time by Period Status</Text>
+        <TouchableOpacity onPress={() => toggleInfo('svs')}>
+          <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
+        </TouchableOpacity>
+        <View style={{ position: 'absolute', top: 0, right: 0 }}>
+          <InfoBubble id={'svs'} title={'Symptoms vs Period'} description={'Daily counts of symptoms split by status: red = with period, green (dashed) = without period. Filled areas help visualize intensity over time.'} />
+        </View>
+      </View>
+      <View style={[analyticsStyles.innerPanel, { paddingTop: 16 }]}>        
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 18, height: 3, backgroundColor: '#dc2626' }} />
+            <Text style={{ fontWeight: '700', color: '#374151' }}>With period</Text>
           </View>
-        ))}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 24, height: 0, borderTopWidth: 3, borderStyle: 'dashed', borderColor: '#10b981' }} />
+            <Text style={{ fontWeight: '700', color: '#374151' }}>Without period</Text>
+          </View>
+        </View>
+        <View style={{ height: 280, width: '100%', marginBottom: 8 }}>
+          <Svg height="280" width="100%">
+            {(() => {
+              const paddingLeft = 40;
+              const paddingTop = 8;
+              const chartWidth = 320;
+              const chartHeight = 220;
+              const maxY = Math.max(1, ...a, ...b);
+              const stepX = chartWidth / Math.max(1, labels.length - 1);
+              const toPoint = (val: number, idx: number) => `${paddingLeft + idx * stepX},${paddingTop + (chartHeight - (val / maxY) * (chartHeight - 10))}`;
+              const makePoints = (arr: number[]) => arr.map((v, i) => toPoint(v || 0, i)).join(' ');
+              const axisY = `${paddingLeft},${paddingTop} ${paddingLeft},${paddingTop + chartHeight}`;
+              const axisX = `${paddingLeft},${paddingTop + chartHeight} ${paddingLeft + chartWidth},${paddingTop + chartHeight}`;
+              const tickStep = Math.max(1, Math.ceil(maxY / 4));
+              const ticks = Array.from({ length: 4 }, (_, i) => (i + 1) * tickStep);
+              const labelEvery = Math.max(1, Math.ceil(labels.length / 6));
+
+              // Build filled areas
+              const makeArea = (arr: number[]) => {
+                const pts = arr.map((v, i) => toPoint(v || 0, i)).join(' ');
+                const lastX = paddingLeft + (arr.length - 1) * stepX;
+                const baseline = `${lastX},${paddingTop + chartHeight} ${paddingLeft},${paddingTop + chartHeight}`;
+                return `${pts} ${baseline}`;
+              };
+
+              // Peak annotations
+              const topIndices = (arr: number[], n: number) => (
+                arr.map((v, i) => ({ v: v || 0, i })).sort((x, y) => y.v - x.v).slice(0, n).map(p => p.i)
+              );
+              const peaksA = topIndices(a, 3);
+              const peaksB = topIndices(b, 3);
+
+              return (
+                <>
+                  <Polyline points={axisY} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                  <Polyline points={axisX} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                  {ticks.map((val, idx) => {
+                    const y = paddingTop + (chartHeight - (val / maxY) * (chartHeight - 10));
+                    return (
+                      <React.Fragment key={`tickwrap-${idx}`}>
+                        <Polyline points={`${paddingLeft - 4},${y} ${paddingLeft},${y}`} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                        <SvgText x={paddingLeft - 8} y={y + 4} fill="#9ca3af" fontSize="10" textAnchor="end">{String(val)}</SvgText>
+                      </React.Fragment>
+                    );
+                  })}
+                  {/* X labels rotated */}
+                  {labels.map((lab, i) => {
+                    if (i % labelEvery !== 0 && i !== labels.length - 1) return null;
+                    const x = paddingLeft + i * stepX;
+                    const y = paddingTop + chartHeight + 18;
+                    return <SvgText key={`xlab-${i}`} x={x} y={y} fill="#6b7280" fontSize="9" textAnchor="end" transform={`rotate(-45, ${x}, ${y})`}>{lab}</SvgText>;
+                  })}
+
+                  {/* Filled areas: red = with period (a), green = without (b) */}
+                  <Polyline points={makeArea(a)} fill="#dc262622" stroke="none" />
+                  <Polyline points={makeArea(b)} fill="#10b98122" stroke="none" />
+                  {/* Lines */}
+                  <Polyline points={makePoints(a)} fill="none" stroke="#dc2626" strokeWidth="2" />
+                  <Polyline points={makePoints(b)} fill="none" stroke="#10b981" strokeWidth="2" strokeDasharray="6,4" />
+
+                  {/* Peak labels */}
+                  {peaksA.map((idx) => {
+                    const [xStr, yStr] = toPoint(a[idx] || 0, idx).split(',');
+                    const x = parseFloat(xStr), y = parseFloat(yStr);
+                    return <SvgText key={`peak-a-${idx}`} x={x} y={y - 8} fill="#dc2626" fontSize="10" fontWeight="700" textAnchor="middle">{String(a[idx] || 0)}</SvgText>;
+                  })}
+                  {peaksB.map((idx) => {
+                    const [xStr, yStr] = toPoint(b[idx] || 0, idx).split(',');
+                    const x = parseFloat(xStr), y = parseFloat(yStr);
+                    return <SvgText key={`peak-b-${idx}`} x={x} y={y - 8} fill="#10b981" fontSize="10" fontWeight="700" textAnchor="middle">{String(b[idx] || 0)}</SvgText>;
+                  })}
+                </>
+              );
+            })()}
+          </Svg>
+        </View>
+        <Text style={[analyticsStyles.chartFooter, { fontWeight: '700' }]}>X: Time; Y: Number of symptoms</Text>
       </View>
     </View>
   );
@@ -214,18 +495,13 @@ export default function AnalyticsScreen() {
       {(['Last 3 Days', 'Last Week', 'Last Month', 'Custom'] as FilterType[]).map(filter => (
         <TouchableOpacity
           key={filter}
-          onPress={() => setSelectedFilter(filter)}
-          style={[
-            analyticsStyles.filterButton,
-            selectedFilter === filter && analyticsStyles.filterButtonActive
-          ]}
+          onPress={() => {
+            if (filter === 'Custom') setShowCustom(true);
+            setSelectedFilter(filter);
+          }}
+          style={[analyticsStyles.filterButton, selectedFilter === filter && analyticsStyles.filterButtonActive]}
         >
-          <Text style={[
-            analyticsStyles.filterButtonText,
-            selectedFilter === filter 
-              ? analyticsStyles.filterButtonTextActive 
-              : analyticsStyles.filterButtonTextInactive
-          ]}>
+          <Text style={[analyticsStyles.filterButtonText, selectedFilter === filter ? analyticsStyles.filterButtonTextActive : analyticsStyles.filterButtonTextInactive]}>
             {filter}
           </Text>
         </TouchableOpacity>
@@ -233,136 +509,459 @@ export default function AnalyticsScreen() {
     </View>
   );
 
+  const handleGeneratePdf = async () => {
+    if (!user) return;
+    const { start, end } = selectedFilter === 'Custom' && customStart && customEnd
+      ? { start: customStart, end: customEnd }
+      : getRange(selectedFilter, selectedDate);
+    await generateHealthReportPdf(user.id, start, end);
+  };
+
+  const renderCalendar = () => {
+    const days = buildMonthMatrix(calendarMonth);
+    const monthName = calendarMonth.toLocaleString('default', { month: 'long' });
+    const year = calendarMonth.getFullYear();
+    const isSelected = (d: Date) => !isNaN(d.getTime()) && (fmt(d) === customStart || fmt(d) === customEnd);
+    const isInRange = (d: Date) => {
+      if (isNaN(d.getTime())) return false;
+      if (!customStart || !customEnd) return false;
+      const s = customStart <= customEnd ? customStart : customEnd;
+      const e = customStart <= customEnd ? customEnd : customStart;
+      const f = fmt(d);
+      return f >= s && f <= e;
+    };
+    return (
+      <View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <TouchableOpacity onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>
+            <Ionicons name="chevron-back" size={20} color="#374151" />
+          </TouchableOpacity>
+          <Text style={{ color: '#111827', fontWeight: '700' }}>{monthName} {year}</Text>
+          <TouchableOpacity onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}>
+            <Ionicons name="chevron-forward" size={20} color="#374151" />
+          </TouchableOpacity>
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+          {['S','M','T','W','T','F','S'].map(d => (
+            <Text key={d} style={{ width: `${100/7}%`, textAlign: 'center', color: '#6b7280', fontWeight: '600' }}>{d}</Text>
+          ))}
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+          {days.map((d, idx) => {
+            const empty = isNaN(d.getTime());
+            const sel = !empty && isSelected(d);
+            const inRange = !empty && isInRange(d);
+            return (
+              <TouchableOpacity key={`d-${idx}`} disabled={empty} onPress={() => {
+                const dayStr = fmt(d);
+                if (!customStart || (customStart && customEnd)) {
+                  // start a new range
+                  setCustomStart(dayStr);
+                  setCustomEnd('');
+                } else if (customStart && !customEnd) {
+                  // finish range; swap if needed
+                  if (dayStr < customStart) { setCustomEnd(customStart); setCustomStart(dayStr); }
+                  else setCustomEnd(dayStr);
+                }
+              }} style={{ width: `${100/7}%`, paddingVertical: 10, alignItems: 'center', backgroundColor: inRange ? '#ffe4e6' : 'transparent', borderRadius: 8 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: sel ? '#ec4899' : 'transparent' }}>
+                  <Text style={{ color: empty ? 'transparent' : sel ? 'white' : '#111827' }}>{empty ? '' : String(d.getDate())}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={analyticsStyles.container}>
       <ScrollView style={analyticsStyles.scrollContainer}>
-        {/* Header */}
         <View style={analyticsStyles.headerCard}>
           <Text style={analyticsStyles.headerTitle}>Health Analytics</Text>
           <Text style={analyticsStyles.headerSubtitle}>Insights into your health patterns</Text>
-          
           {renderFilterButtons()}
-        </View>
-
-        {/* KPIs with Pastel Colors */}
-        <View style={analyticsStyles.sectionCard}>
-          <Text style={analyticsStyles.sectionTitle}>Overview</Text>
-          <View style={analyticsStyles.kpiContainer}>
-            {[
-              { label: 'Avg Sleep (h)', value: realKpis.sleepProgress.toFixed(1), style: analyticsStyles.kpiCardSleep },
-              { label: 'Data Quality (%)', value: realKpis.dataCompleteness.toString(), style: analyticsStyles.kpiCardQuality },
-              { label: 'Avg Sport (min)', value: realKpis.sportProgress.toFixed(0), style: analyticsStyles.kpiCardSport },
-              { label: 'Avg Symptoms/day', value: realKpis.symptomsProgress.toFixed(1), style: analyticsStyles.kpiCardSymptoms }
-            ].map((card, idx) => (
-              <View key={card.label} style={[analyticsStyles.kpiCard, card.style]}>
-                <Text style={analyticsStyles.kpiLabel}>{card.label}</Text>
-                <Text style={analyticsStyles.kpiValue}>{card.value}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Number of Symptoms Over Time */}
-        <View style={analyticsStyles.sectionCard}>
-          <Text style={analyticsStyles.sectionTitle}>Number of Symptoms Over Time</Text>
-          {renderSimpleChart(symptomTrend.counts, symptomTrend.labels, 'Daily Symptoms', analyticsStyles.chartBarBlue)}
-          <Text style={analyticsStyles.chartFooter}>
-            Last {symptomTrend.counts.length} {selectedFilter.includes('Day') ? 'days' : selectedFilter.includes('Week') ? 'days' : 'weeks'}
-          </Text>
-        </View>
-
-        {/* Digestive Issues Trend */}
-        <View style={analyticsStyles.sectionCard}>
-          <Text style={analyticsStyles.sectionTitle}>Digestive Issues Days Trend</Text>
-          {renderSimpleChart(digestiveTrend.counts, digestiveTrend.labels, 'Weekly Digestive Issues', analyticsStyles.chartBarPurple)}
-          <Text style={analyticsStyles.chartFooter}>
-            Last {digestiveTrend.counts.length} {selectedFilter.includes('Day') ? 'days' : selectedFilter.includes('Week') ? 'days' : 'weeks'}
-          </Text>
-        </View>
-
-        {/* Symptom Recurrence Analysis */}
-        <View style={analyticsStyles.sectionCard}>
-          <Text style={analyticsStyles.sectionTitle}>Symptom Recurrence Analysis</Text>
-          <View style={analyticsStyles.analysisContainer}>
-            <Text style={analyticsStyles.analysisTitle}>Most Frequent Symptoms:</Text>
-            <View style={analyticsStyles.analysisItemsContainer}>
-              {[
-                { symptom: 'Headache', count: 12, percentage: 60 },
-                { symptom: 'Fatigue', count: 8, percentage: 40 },
-                { symptom: 'Nausea', count: 5, percentage: 25 },
-                { symptom: 'Bloating', count: 4, percentage: 20 }
-              ].map((item, index) => (
-                <View key={index} style={analyticsStyles.analysisItem}>
-                  <Text style={analyticsStyles.analysisLabel}>{item.symptom}</Text>
-                  <View style={analyticsStyles.analysisBarContainer}>
-                    <View 
-                      style={[
-                        analyticsStyles.analysisBar,
-                        { width: `${item.percentage}%` }
-                      ]}
-                    />
-                  </View>
-                  <Text style={analyticsStyles.analysisValue}>{item.count}</Text>
-                </View>
-              ))}
+          {selectedFilter === 'Custom' && customStart && customEnd && (
+            <View style={{ alignSelf: 'flex-start', backgroundColor: '#ffe4e6', borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12, marginTop: -12, marginBottom: 8 }}>
+              <Text style={{ color: '#9d174d', fontWeight: '700' }}>Custom period: {customStart} → {customEnd}</Text>
+            </View>
+          )}
+          {/* KPI Overview */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            <View style={{ flexGrow: 1, flexBasis: '48%', backgroundColor: '#eef2ff', borderRadius: 12, padding: 12 }}>
+              <Text style={{ color: '#6b7280', fontSize: 12 }}>Avg Sleep</Text>
+              <Text style={{ color: '#111827', fontWeight: '700', fontSize: 18 }}>{kpis.sleepAvgH} h</Text>
+            </View>
+            <View style={{ flexGrow: 1, flexBasis: '48%', backgroundColor: '#ecfeff', borderRadius: 12, padding: 12 }}>
+              <Text style={{ color: '#6b7280', fontSize: 12 }}>Avg Sport (h)</Text>
+              <Text style={{ color: '#111827', fontWeight: '700', fontSize: 18 }}>{kpis.sportAvgH > 0 ? kpis.sportAvgH : '—'}</Text>
+            </View>
+            <View style={{ flexGrow: 1, flexBasis: '48%', backgroundColor: '#fef3c7', borderRadius: 12, padding: 12 }}>
+              <Text style={{ color: '#6b7280', fontSize: 12 }}>Avg Symptoms</Text>
+              <Text style={{ color: '#111827', fontWeight: '700', fontSize: 18 }}>{kpis.symptomsAvg}</Text>
+            </View>
+            <View style={{ flexGrow: 1, flexBasis: '48%', backgroundColor: '#dcfce7', borderRadius: 12, padding: 12 }}>
+              <Text style={{ color: '#6b7280', fontSize: 12 }}>Avg Calories</Text>
+              <Text style={{ color: '#111827', fontWeight: '700', fontSize: 18 }}>{Math.round(kpis.caloriesAvg)}</Text>
             </View>
           </View>
+          <TouchableOpacity onPress={handleGeneratePdf} style={{ backgroundColor: '#111827', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, alignSelf: 'flex-start', marginTop: 8 }}>
+            <Text style={{ color: 'white', fontWeight: '600' }}>Export PDF</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Food Correlation Analysis */}
         <View style={analyticsStyles.sectionCard}>
-          <Text style={analyticsStyles.sectionTitle}>Food Correlation Analysis</Text>
+          <View style={analyticsStyles.sectionHeaderRow}>
+            <Text style={analyticsStyles.sectionTitleLarge}>Calories Over Time</Text>
+            <TouchableOpacity onPress={() => toggleInfo('cal')}>
+              <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
+            </TouchableOpacity>
+            <View style={{ position: 'absolute', top: 0, right: 0 }}>
+              <InfoBubble id={'cal'} title={'Calories Over Time'} description={'Calories estimates from your logged meals.'} />
+            </View>
+          </View>
+          <View style={analyticsStyles.innerPanel}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ width: 18, height: 3, backgroundColor: '#f59e0b' }} />
+                <Text style={{ fontWeight: '700', color: '#374151' }}>Calories</Text>
+              </View>
+            </View>
+            {/* Line chart with time on X axis and kcal on Y */}
+            {(() => {
+              const labels = caloriesGrouped.labels;
+              const values = caloriesGrouped.values;
+              const paddingLeft = 40;
+              const paddingTop = 8;
+              const chartWidth = 320;
+              const chartHeight = 220;
+              const maxY = Math.max(1, ...values);
+              const stepX = chartWidth / Math.max(1, labels.length - 1);
+              const toPoint = (val: number, idx: number) => `${paddingLeft + idx * stepX},${paddingTop + (chartHeight - (val / maxY) * (chartHeight - 10))}`;
+              const makePoints = (arr: number[]) => arr.map((v, i) => toPoint(v || 0, i)).join(' ');
+              const makeArea = (arr: number[]) => {
+                const pts = arr.map((v, i) => toPoint(v || 0, i)).join(' ');
+                const lastX = paddingLeft + (arr.length - 1) * stepX;
+                const baseline = `${lastX},${paddingTop + chartHeight} ${paddingLeft},${paddingTop + chartHeight}`;
+                return `${pts} ${baseline}`;
+              };
+              const axisY = `${paddingLeft},${paddingTop} ${paddingLeft},${paddingTop + chartHeight}`;
+              const axisX = `${paddingLeft},${paddingTop + chartHeight} ${paddingLeft + chartWidth},${paddingTop + chartHeight}`;
+              const tickStep = Math.max(1, Math.ceil(maxY / 4));
+              const ticks = Array.from({ length: 4 }, (_, i) => (i + 1) * tickStep);
+              const labelEvery = Math.max(1, Math.ceil(labels.length / 6));
+              const topIndices = values.map((v, i) => ({ v: v || 0, i })).sort((a, b) => b.v - a.v).slice(0, 3).map(p => p.i);
+              return (
+                <View style={{ height: 280, width: '100%' }}>
+                  <Svg height="280" width="100%">
+                    <Polyline points={axisY} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                    <Polyline points={axisX} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                    {ticks.map((val, idx) => {
+                      const y = paddingTop + (chartHeight - (val / maxY) * (chartHeight - 10));
+                      return (
+                        <React.Fragment key={`cal-tick-${idx}`}>
+                          <Polyline points={`${paddingLeft - 4},${y} ${paddingLeft},${y}`} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                          <SvgText x={paddingLeft - 8} y={y + 4} fill="#9ca3af" fontSize="10" textAnchor="end">{String(val)}</SvgText>
+                        </React.Fragment>
+                      );
+                    })}
+                    {/* X labels rotated */}
+                    {labels.map((lab, i) => {
+                      if (i % labelEvery !== 0 && i !== labels.length - 1) return null;
+                      const x = paddingLeft + i * stepX;
+                      const y = paddingTop + chartHeight + 18;
+                      return <SvgText key={`cal-x-${i}`} x={x} y={y} fill="#6b7280" fontSize="9" textAnchor="end" transform={`rotate(-45, ${x}, ${y})`}>{lab}</SvgText>;
+                    })}
+                    <Polyline points={makeArea(values)} fill="#f59e0b22" stroke="none" />
+                    <Polyline points={makePoints(values)} fill="none" stroke="#f59e0b" strokeWidth="2" />
+                    {/* peak labels */}
+                    {topIndices.map((idx) => {
+                      const [xStr, yStr] = toPoint(values[idx] || 0, idx).split(',');
+                      const x = parseFloat(xStr), y = parseFloat(yStr);
+                      return <SvgText key={`cal-peak-${idx}`} x={x} y={y - 8} fill="#b45309" fontSize="10" fontWeight="700" textAnchor="middle">{String(values[idx] || 0)}</SvgText>;
+                    })}
+                  </Svg>
+                </View>
+              );
+            })()}
+            <Text style={[analyticsStyles.chartFooter, { fontWeight: '700' }]}>X: Time; Y: Calories</Text>
+          </View>
+        </View>
+
+        {renderBarListPanel('Symptom Recurrence Analysis', 'Most Frequent Symptoms:', topSymptoms.map(s => s.name), topSymptoms.map(s => s.count), analyticsStyles.chartBarPink, 'sra', 'Top symptoms by number of days they were reported within the selected period.')}
+
+        <View style={analyticsStyles.sectionCard}>
+          <View style={analyticsStyles.sectionHeaderRow}>
+            <Text style={analyticsStyles.sectionTitleLarge}>Digestive Issues Days Trend</Text>
+            <TouchableOpacity onPress={() => toggleInfo('dig')}>
+              <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
+            </TouchableOpacity>
+            <View style={{ position: 'absolute', top: 0, right: 0 }}>
+              <InfoBubble id={'dig'} title={'Digestive Issues Days Trend'} description={'Counts of digestive-related symptoms: bloating, gas, stomach pain, constipation, diarrhea, cramps, reflux, heartburn.'} />
+            </View>
+          </View>
+          <View style={analyticsStyles.innerPanel}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ width: 12, height: 12, backgroundColor: '#8b5cf6', borderRadius: 2 }} />
+                <Text style={{ fontWeight: '700', color: '#374151' }}>Digestive issues</Text>
+              </View>
+            </View>
+            {(() => {
+              const labels = digestiveTrend.labels;
+              const values = digestiveTrend.values;
+              const paddingLeft = 40;
+              const paddingTop = 8;
+              const chartWidth = 320;
+              const chartHeight = 220;
+              const maxY = Math.max(3, ...values, 1);
+              const stepX = chartWidth / Math.max(1, labels.length);
+              const axisY = `${paddingLeft},${paddingTop} ${paddingLeft},${paddingTop + chartHeight}`;
+              const axisX = `${paddingLeft},${paddingTop + chartHeight} ${paddingLeft + chartWidth},${paddingTop + chartHeight}`;
+              const maxTicks = Math.min(10, Math.max(3, Math.ceil(maxY)));
+              const ticks = Array.from({ length: maxTicks }, (_, i) => i + 1);
+              const labelEvery = Math.max(1, Math.ceil(labels.length / 6));
+              const barGap = 4;
+              const barWidth = Math.min(18, Math.max(4, stepX - barGap));
+              return (
+                <View style={{ height: 280, width: '100%' }}>
+                  <Svg height="280" width="100%">
+                    <Polyline points={axisY} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                    <Polyline points={axisX} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                    {ticks.map((val, idx) => {
+                      const y = paddingTop + (chartHeight - (val / maxY) * (chartHeight - 10));
+                      return (
+                        <React.Fragment key={`dig-tick-${idx}`}>
+                          <Polyline points={`${paddingLeft - 4},${y} ${paddingLeft},${y}`} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                          <SvgText x={paddingLeft - 8} y={y + 4} fill="#9ca3af" fontSize="10" textAnchor="end">{String(val)}</SvgText>
+                        </React.Fragment>
+                      );
+                    })}
+                    {/* Bars in purple */}
+                    {values.map((v, i) => {
+                      const x = paddingLeft + i * stepX + barGap / 2;
+                      const h = (v / maxY) * (chartHeight - 10);
+                      const y = paddingTop + (chartHeight - h);
+                      return <Rect key={`bar-${i}`} x={x} y={y} width={barWidth} height={Math.max(0.5, h)} fill="#8b5cf6" rx={2} />;
+                    })}
+                    {/* X labels rotated */}
+                    {labels.map((lab, i) => {
+                      if (i % labelEvery !== 0 && i !== labels.length - 1) return null;
+                      const x = paddingLeft + i * stepX + barWidth / 2;
+                      const y = paddingTop + chartHeight + 18;
+                      return <SvgText key={`dig-x-${i}`} x={x} y={y} fill="#6b7280" fontSize="9" textAnchor="end" transform={`rotate(-45, ${x}, ${y})`}>{lab}</SvgText>;
+                    })}
+                  </Svg>
+                </View>
+              );
+            })()}
+            <Text style={[analyticsStyles.chartFooter, { fontWeight: '700' }]}>X: Time; Y: Number of symptoms</Text>
+          </View>
+        </View>
+
+        {renderTwoLines(periodSeries.labels, periodSeries.withPeriod, periodSeries.withoutPeriod)}
+
+        {cyclePrediction && (
+          <View style={analyticsStyles.sectionCard}>
+            <View style={analyticsStyles.sectionHeaderRow}>
+              <Text style={analyticsStyles.sectionTitleLarge}>Cycle Prediction</Text>
+              <TouchableOpacity onPress={() => toggleInfo('cycle')}>
+                <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+            <InfoBubble id={'cycle'} title={'Cycle Prediction'} description={'Estimations use your recorded period days and profile cycle length (supports continuous pill). Lateness compares last actual vs expected.'} />
+            <View style={analyticsStyles.innerPanel}>
+              <Text style={analyticsStyles.innerPanelTitle}>Next dates</Text>
+              <View style={{ gap: 8 }}>
+                <View style={{ backgroundColor: '#374151', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
+                  <Text style={{ color: 'white', fontWeight: '700' }}>Last Period: {cyclePrediction.lastPeriodDate || '-'}</Text>
+                </View>
+                <View style={{ backgroundColor: '#1e40af', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
+                  <Text style={{ color: 'white', fontWeight: '700' }}>Next Period: {cyclePrediction.nextPeriodDate}</Text>
+                </View>
+                <View style={{ backgroundColor: '#6d28d9', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
+                  <Text style={{ color: 'white', fontWeight: '700' }}>Next Ovulation: {cyclePrediction.nextOvulationDate}</Text>
+                </View>
+                <View style={{ backgroundColor: '#065f46', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
+                  <Text style={{ color: 'white', fontWeight: '700' }}>Cycle: {cyclePrediction.cycleLengthDays} days</Text>
+                </View>
+                {typeof (cyclePrediction as any).latenessDays !== 'undefined' && (
+                  <View style={{ backgroundColor: '#334155', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 }}>
+                    <Text style={{ color: 'white', fontWeight: '700' }}>Lateness: {(cyclePrediction as any).latenessDays} days</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
+
+        <View style={analyticsStyles.sectionCard}>
+          <View style={analyticsStyles.sectionHeaderRow}>
+            <Text style={analyticsStyles.sectionTitleLarge}>Food Correlation Analysis</Text>
+            <TouchableOpacity onPress={() => toggleInfo('fdc')}>
+              <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
+            </TouchableOpacity>
+            <View style={{ position: 'absolute', top: 0, right: 0 }}>
+              <InfoBubble id={'fdc'} title={'Food Correlation Analysis'} description={'Computed as: days with (food present AND digestive issue present) / days with food present. Digestive issues include bloating, gas, stomach pain, constipation, diarrhea, cramps, reflux, heartburn.'} />
+            </View>
+          </View>
           <View style={analyticsStyles.tableContainer}>
             <View style={analyticsStyles.table}>
               <View style={analyticsStyles.tableHeader}>
                 <Text style={analyticsStyles.tableHeaderText}>Food</Text>
                 <Text style={analyticsStyles.tableHeaderText}>Correlation</Text>
               </View>
-              {foodCorrelation.map((item, index) => (
-                <View 
-                  key={item.food} 
-                  style={[
-                    analyticsStyles.tableRow,
-                    index % 2 === 0 ? analyticsStyles.tableRowEven : analyticsStyles.tableRowOdd
-                  ]}
-                >
-                  <Text style={analyticsStyles.tableCell}>{item.food}</Text>
-                  <Text style={analyticsStyles.tableCell}>{item.correlation}%</Text>
+              {foodDigestiveCorrelation.slice(0, (AnalyticsScreen as any)._fdcExpanded ? 10 : 6).map((row, index) => (
+                <View key={`fdc-${row.name}-${index}`} style={[analyticsStyles.tableRow, index % 2 === 0 ? analyticsStyles.tableRowEven : analyticsStyles.tableRowOdd]}>
+                  <Text style={analyticsStyles.tableCell}>{row.name}</Text>
+                  <Text style={analyticsStyles.tableCell}>{row.correlationPct}%</Text>
                 </View>
               ))}
+            </View>
+            {foodDigestiveCorrelation.length > 6 && (
+              <TouchableOpacity onPress={() => { (AnalyticsScreen as any)._fdcExpanded = !(AnalyticsScreen as any)._fdcExpanded; forceUpdate(x => x + 1); }} style={{ alignSelf: 'center', marginTop: 8, backgroundColor: '#f3f4f6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
+                <Text style={{ color: '#374151', fontWeight: '700' }}>{(AnalyticsScreen as any)._fdcExpanded ? 'Show less' : 'Load more'}</Text>
+              </TouchableOpacity>
+            )}
+            {(() => {
+              const details = (AnalyticsScreen as any)._foodSymptomDetails as Record<string, Array<{ name: string; count: number }>> | undefined;
+              const topFoods = foodDigestiveCorrelation.slice(0, 3).map(f => f.name);
+              const itemsList = topFoods.join(', ');
+              const symptomUnion: Record<string, number> = {};
+              if (details) {
+                topFoods.forEach(f => (details[f] || []).forEach(({ name, count }) => { symptomUnion[name] = (symptomUnion[name] || 0) + count; }));
+              }
+              const topSymptoms = Object.entries(symptomUnion).sort((a,b)=>b[1]-a[1]).slice(0, 3).map(([n,c]) => `${n} (${c})`).join(', ');
+              const disclaimer = `Note: correlation does not imply causation.\nWe observe that when you eat ${itemsList || 'these foods'}, you often log: ${topSymptoms || 'various digestive symptoms'}.`;
+              return (
+                <Text style={[analyticsStyles.chartFooter, { marginTop: 8 }]}>{disclaimer}</Text>
+              );
+            })()}
+          </View>
+          {/* Bloating animation and count */}
+          <View style={[analyticsStyles.innerPanel, { marginTop: 12 }]}> 
+            <Text style={analyticsStyles.innerPanelTitle}>Bloating (range)</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+              <View>
+                <Animated.Image
+                  source={BLOATED_IMG}
+                  style={{ width: 180, height: 180, borderRadius: 12, transform: [{ scale: bellyScale }] }}
+                  resizeMode="cover"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#111827', fontWeight: '700', fontSize: 16 }}>Bloated days</Text>
+                <Text style={{ color: '#374151', marginBottom: 6 }}>{bloatingStats.daysWith} / {bloatingStats.totalDays}</Text>
+                <View style={{ height: 10, backgroundColor: '#e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+                  <View style={{ width: `${Math.round((bloatingStats.daysWith / Math.max(1, bloatingStats.totalDays)) * 100)}%`, height: '100%', backgroundColor: '#fb7185' }} />
+                </View>
+                {/* No action buttons: using bundled image */}
+              </View>
             </View>
           </View>
         </View>
 
-        {/* Health Insights Dashboard */}
-        <View style={analyticsStyles.sectionCard}>
-          <Text style={analyticsStyles.sectionTitle}>Health Insights</Text>
-          
-          {/* Alerts */}
-          <View style={analyticsStyles.insightsSection}>
-            <Text style={[analyticsStyles.insightsTitle, analyticsStyles.insightsTitleAlert]}>Alerts:</Text>
-            {healthInsights.alerts.map((alert, index) => (
-              <Text key={index} style={[analyticsStyles.insightsItem, analyticsStyles.insightsItemAlert]}>• {alert}</Text>
-            ))}
+        {/* Personalized Insights */}
+        <View style={[analyticsStyles.sectionCard, { borderColor: '#dc2626' }]}> 
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={analyticsStyles.sectionTitleLarge}>Bilan</Text>
           </View>
-          
-          {/* Insights */}
-          <View style={analyticsStyles.insightsSection}>
-            <Text style={[analyticsStyles.insightsTitle, analyticsStyles.insightsTitlePositive]}>Positive Insights:</Text>
-            {healthInsights.insights.map((insight, index) => (
-              <Text key={index} style={[analyticsStyles.insightsItem, analyticsStyles.insightsItemPositive]}>• {insight}</Text>
+          <View style={[analyticsStyles.innerPanel, { backgroundColor: '#e0f2fe', borderWidth: 1, borderColor: '#dc2626' }]}> 
+            {insights.map((it, idx) => (
+              <View key={`ins-${idx}`} style={{ marginBottom: 8 }}>
+                <Text style={{ fontWeight: '700', color: '#111827' }}>{it.title}</Text>
+                <Text style={{ color: '#111827' }}>{it.text}</Text>
+              </View>
             ))}
-          </View>
-          
-          {/* Recommendations */}
-          <View>
-            <Text style={[analyticsStyles.insightsTitle, analyticsStyles.insightsTitleRecommendation]}>Recommendations:</Text>
-            {healthInsights.recommendations.map((rec, index) => (
-              <Text key={index} style={[analyticsStyles.insightsItem, analyticsStyles.insightsItemRecommendation]}>• {rec}</Text>
-            ))}
+            {insights.length === 0 && (
+              <Text style={{ color: '#111827' }}>Insights will appear once you have enough data in the selected period.</Text>
+            )}
           </View>
         </View>
+
+        {/* Weight Over Time (weekly entries) */}
+        {weightSeries.values.length > 0 && (
+          <View style={analyticsStyles.sectionCard}>
+            <View style={analyticsStyles.sectionHeaderRow}>
+              <Text style={analyticsStyles.sectionTitleLarge}>Weight Over Time</Text>
+              <TouchableOpacity onPress={() => toggleInfo('wgt')}>
+                <Ionicons name="information-circle-outline" size={22} color="#6b7280" />
+              </TouchableOpacity>
+              <View style={{ position: 'absolute', top: 0, right: 0 }}>
+                <InfoBubble id={'wgt'} title={'Weight Over Time'} description={'Weekly weights you logged in Home.'} />
+              </View>
+            </View>
+            <View style={analyticsStyles.innerPanel}>
+              {(() => {
+                const labels = weightSeries.labels;
+                const values = weightSeries.values;
+                const paddingLeft = 44;
+                const paddingTop = 8;
+                const chartWidth = 320;
+                const chartHeight = 220;
+                const minY = Math.min(...values);
+                const maxY = Math.max(...values);
+                const span = Math.max(1, maxY - minY);
+                const topY = maxY + span * 0.1;
+                const bottomY = Math.max(0, minY - span * 0.1);
+                const stepX = chartWidth / Math.max(1, labels.length - 1);
+                const toPoint = (val: number, idx: number) => {
+                  const norm = (val - bottomY) / Math.max(1e-6, (topY - bottomY));
+                  return `${paddingLeft + idx * stepX},${paddingTop + (chartHeight - norm * (chartHeight - 10))}`;
+                };
+                const makePoints = (arr: number[]) => arr.map((v, i) => toPoint(v || 0, i)).join(' ');
+                const axisY = `${paddingLeft},${paddingTop} ${paddingLeft},${paddingTop + chartHeight}`;
+                const axisX = `${paddingLeft},${paddingTop + chartHeight} ${paddingLeft + chartWidth},${paddingTop + chartHeight}`;
+                const labelEvery = Math.max(1, Math.ceil(labels.length / 6));
+                const peaks = values.map((v, i) => ({ v, i })).sort((a,b)=>b.v-a.v).slice(0,2).map(p=>p.i);
+                return (
+                  <View style={{ height: 280, width: '100%' }}>
+                    <Svg height="280" width="100%">
+                      <Polyline points={axisY} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                      <Polyline points={axisX} fill="none" stroke="#9ca3af" strokeWidth="1" />
+                      {/* X labels */}
+                      {labels.map((lab, i) => {
+                        if (i % labelEvery !== 0 && i !== labels.length - 1) return null;
+                        const x = paddingLeft + i * stepX;
+                        const y = paddingTop + chartHeight + 18;
+                        return <SvgText key={`w-x-${i}`} x={x} y={y} fill="#6b7280" fontSize="9" textAnchor="end" transform={`rotate(-45, ${x}, ${y})`}>{lab}</SvgText>;
+                      })}
+                      {/* Area + line */}
+                      <Polyline points={`${makePoints(values)} ${paddingLeft + (labels.length - 1) * stepX},${paddingTop + chartHeight} ${paddingLeft},${paddingTop + chartHeight}`} fill="#60a5fa22" stroke="none" />
+                      <Polyline points={makePoints(values)} fill="none" stroke="#3b82f6" strokeWidth="2" />
+                      {/* Peak labels */}
+                      {peaks.map((idx)=>{
+                        const [xStr,yStr]=toPoint(values[idx]||0,idx).split(',');
+                        const x=parseFloat(xStr), y=parseFloat(yStr);
+                        return <SvgText key={`w-p-${idx}`} x={x} y={y-8} fill="#1d4ed8" fontSize="10" fontWeight="700" textAnchor="middle">{String(values[idx])} kg</SvgText>;
+                      })}
+                    </Svg>
+                  </View>
+                );
+              })()}
+              <Text style={[analyticsStyles.chartFooter, { fontWeight: '700' }]}>X: Time; Y: Weight (kg)</Text>
+            </View>
+          </View>
+        )}
+
       </ScrollView>
+      <Modal visible={showCustom} transparent onRequestClose={() => setShowCustom(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <View style={{ backgroundColor: 'white', borderRadius: 12, width: '100%', padding: 16 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 12 }}>Custom Range</Text>
+            {renderCalendar()}
+            <View style={{ flexDirection: 'row', marginTop: 16, gap: 8 }}>
+              <TouchableOpacity onPress={() => setShowCustom(false)} style={{ flex: 1, backgroundColor: '#e5e7eb', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}>
+                <Text style={{ color: '#374151', fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { if (customStart && customEnd) setShowCustom(false); }} style={{ flex: 1, backgroundColor: '#111827', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}>
+                <Text style={{ color: 'white', fontWeight: '600' }}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 } 

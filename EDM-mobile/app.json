@@ -32,6 +32,12 @@
       "favicon": "./assets/favicon.png"
     },
     "sdkVersion": "53.0.0",
-    "plugins": []
+    "plugins": [],
+    "extra": {
+      "OPENAI_API_KEY": "",
+      "MONGODB_URI": "",
+      "PROJECT_ID": "lotushealthedm",
+      "API_BASE_URL": ""
+    }
   }
 }

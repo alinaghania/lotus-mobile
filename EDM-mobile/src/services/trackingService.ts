@@ -2,14 +2,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DailyRecord } from '../types/tracking';
 
 class TrackingService {
-  private async getTrackingKey(userId: string, date: string): string {
+  private async getTrackingKey(userId: string, date: string): Promise<string> {
     return `tracking_${userId}_${date}`;
   }
 
   async createTracking(userId: string, date: string, data: DailyRecord): Promise<DailyRecord> {
     const key = await this.getTrackingKey(userId, date);
-    await AsyncStorage.setItem(key, JSON.stringify(data));
-    return data;
+    const payload: DailyRecord = { date, ...(data || {}) } as DailyRecord;
+    await AsyncStorage.setItem(key, JSON.stringify(payload));
+    return payload;
   }
 
   async getTrackingByUser(userId: string): Promise<DailyRecord[]> {
@@ -33,10 +34,8 @@ class TrackingService {
   async updateTracking(userId: string, date: string, data: Partial<DailyRecord>): Promise<DailyRecord> {
     const key = await this.getTrackingKey(userId, date);
     const existingData = await AsyncStorage.getItem(key);
-    const updatedData = {
-      ...(existingData ? JSON.parse(existingData) : {}),
-      ...data
-    };
+    const base = existingData ? JSON.parse(existingData) : { date };
+    const updatedData: DailyRecord = { ...base, ...data, date } as DailyRecord;
     await AsyncStorage.setItem(key, JSON.stringify(updatedData));
     return updatedData;
   }

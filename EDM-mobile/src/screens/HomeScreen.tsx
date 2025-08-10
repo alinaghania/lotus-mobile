@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, Alert, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, Alert, Dimensions, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,8 @@ import { Character } from '../types/character';
 import { TrackingProgress, DailyRecord, MealData } from '../types/tracking';
 import DetailedCharacter from '../components/DetailedCharacter';
 import { styles } from '../styles/homeStyles';
+import { profileService } from '../services/profileService';
+import { UserProfile } from '../types/profile';
 
 interface Task {
   id: string;
@@ -89,6 +91,8 @@ export default function HomeScreen() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [dailyRecord, setDailyRecord] = useState<DailyRecord | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [weightInput, setWeightInput] = useState('');
   const [trackingProgress, setTrackingProgress] = useState<TrackingProgress>({
     meals: 0,
     symptoms: 0,
@@ -210,6 +214,8 @@ export default function HomeScreen() {
           const record = await trackingService.getTrackingByDate(user.id, date);
           console.log('📦 HOME: Loaded record:', record);
           setDailyRecord(record);
+          const p = await profileService.getProfile(user.id);
+          setProfile(p);
           
           const progress = calculateTrackingProgress(record);
           console.log('📊 HOME: Calculated progress:', progress);
@@ -548,6 +554,51 @@ export default function HomeScreen() {
                 </View>
               ))}
             </View>
+
+            {/* Weekly weight task */}
+            {(() => {
+              if (!profile) return null;
+              const dow = profile.weightDayOfWeek ?? -1;
+              const todayDow = new Date().getDay();
+              const lastEntry = (profile.weights || []).slice(-1)[0];
+              const thisWeek = new Date();
+              const startOfWeek = new Date(thisWeek);
+              startOfWeek.setDate(thisWeek.getDate() - thisWeek.getDay());
+              const hasEntryThisWeek = (profile.weights || []).some(w => new Date(w.date) >= startOfWeek);
+              const shouldAskToday = dow === todayDow && !hasEntryThisWeek;
+              if (!shouldAskToday) return null;
+              return (
+                <View style={[styles.taskItem, styles.taskRequired]}>
+                  <View style={styles.taskRow}>
+                    <View style={styles.taskContent}>
+                      <Ionicons name="fitness-outline" size={20} color="#2563eb" />
+                      <Text style={[styles.taskText, styles.taskTextDefault]}>What is your weight?</Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                    <TextInput
+                      value={weightInput}
+                      onChangeText={setWeightInput}
+                      keyboardType="numeric"
+                      style={{ backgroundColor: '#f3f4f6', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, flex: 1, marginRight: 8 }}
+                      placeholder="kg"
+                    />
+                    <TouchableOpacity onPress={async () => {
+                      if (!user) return;
+                      const kg = parseFloat(weightInput || '0');
+                      if (!(kg > 0)) return;
+                      const date = new Date().toISOString().split('T')[0];
+                      const updated = await profileService.upsertProfile(user.id, { weights: [ ...(profile.weights || []), { date, kg } ] });
+                      setProfile(updated);
+                      setWeightInput('');
+                      Alert.alert('Saved', 'Weight entry saved');
+                    }} style={[styles.continueButton, { paddingVertical: 10 }]}>
+                      <Text style={styles.continueButtonText}>Save</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })()}
 
             <TouchableOpacity
               onPress={() => navigation.navigate('Tracking' as never)}

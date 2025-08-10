@@ -3,8 +3,8 @@ import { authService } from '../services/authService';
 import { User, LoginCredentials, RegisterCredentials, AuthState } from '../types/auth';
 
 interface AuthContextType extends AuthState {
-  login: (credentials: LoginCredentials) => Promise<void>;
-  register: (credentials: RegisterCredentials) => Promise<void>;
+  login: (credentials: LoginCredentials) => Promise<User>;
+  register: (credentials: RegisterCredentials) => Promise<User>;
   logout: () => Promise<void>;
 }
 
@@ -44,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const user = await authService.login(credentials);
       if (!user) throw new Error('Login failed');
       setState({ user, loading: false });
+      return user;
     } catch (error) {
       setState(prev => ({ ...prev, loading: false }));
       throw error;
@@ -55,6 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const user = await authService.register(credentials);
       setState({ user, loading: false });
+      return user;
     } catch (error) {
       setState(prev => ({ ...prev, loading: false }));
       throw error;

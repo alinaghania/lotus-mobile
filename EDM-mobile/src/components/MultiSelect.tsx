@@ -48,7 +48,7 @@ const multiSelectStyles = StyleSheet.create({
     flex: 1,
   },
   placeholderText: {
-    color: '#9ca3af',
+    color: '#374151',
     fontSize: 16,
   },
   chevron: {
@@ -361,6 +361,7 @@ export default function MultiSelect({
                   placeholder="Search options..."
                   value={searchText}
                   onChangeText={setSearchText}
+                  placeholderTextColor="#374151"
                 />
               </View>
             )}

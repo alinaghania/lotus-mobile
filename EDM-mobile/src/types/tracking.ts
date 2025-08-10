@@ -12,6 +12,13 @@ export interface MealData {
   drinkQuantities?: Record<string, number>;
 }
 
+export interface NutritionItemEstimate {
+  name: string;
+  quantity: number; // in unit units, or servings
+  unit?: string; // e.g., 'serving', 'g', 'ml'
+  calories: number; // estimated calories for the quantity
+}
+
 export interface DailyRecord {
   date: string;
   digestive?: {
@@ -38,6 +45,11 @@ export interface DailyRecord {
     types: string[];
     notes?: string;
   };
+  nutrition?: {
+    totalCalories: number;
+    items?: NutritionItemEstimate[];
+    perMealOverrides?: Partial<Record<'morning'|'afternoon'|'evening'|'snack', number>>;
+  };
   notes?: string;
 }
 
@@ -59,6 +71,21 @@ export interface AnalyticsData {
     withoutPeriod: number;
     correlation: number;
   };
+  caloriesData?: {
+    average: number;
+    perDay: Array<{ date: string; calories: number }>; // by date
+  };
+  foodsData?: Array<{ name: string; count: number }>;
+  foodSymptomMatrix?: {
+    foods: string[];
+    symptoms: string[];
+    cooccurrence: number[][]; // foods x symptoms counts
+  };
+  symptomsOverTime?: Array<{ date: string; count: number }>;
+  digestiveIssuesTrend?: Array<{ date: string; count: number }>;
+  periodSymptomsSeries?: { dates: string[]; withPeriod: number[]; withoutPeriod: number[] };
+  cyclePrediction?: { lastPeriodDate?: string; nextPeriodDate: string; nextOvulationDate: string; cycleLengthDays: number; latenessDays?: number };
+  cycleLatenessByMonth?: Array<{ month: string; daysLate: number }>;
 }
 
 export interface HealthScore {

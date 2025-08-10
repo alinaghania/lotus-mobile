@@ -83,6 +83,8 @@ export const analyticsStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     marginBottom: 24,
+    position: 'relative',
+    zIndex: 1,
   },
   sectionTitle: {
     fontSize: 18,
@@ -92,6 +94,33 @@ export const analyticsStyles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: '#000',
     paddingBottom: 4,
+  },
+  sectionTitleLarge: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: '#111827',
+    paddingBottom: 6,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 32,
+    position: 'relative',
+  },
+  innerPanel: {
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    padding: 16,
+  },
+  innerPanelTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 12,
   },
 
   // KPI Cards
@@ -136,7 +165,7 @@ export const analyticsStyles = StyleSheet.create({
     color: '#111827',
   },
 
-  // Chart Styles
+  // Chart Styles (legacy simple list)
   chartContainer: {
     marginTop: 16,
   },
@@ -181,6 +210,60 @@ export const analyticsStyles = StyleSheet.create({
     marginTop: 8,
   },
 
+  // Info bubble overlay
+  infoBubble: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    maxWidth: 300,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    zIndex: 50,
+  },
+  infoBubbleText: {
+    fontSize: 12,
+    color: '#374151',
+  },
+
+  // Bar list (new aesthetic)
+  barListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  barListLabel: {
+    width: 48,
+    color: '#6b7280',
+    fontSize: 14,
+  },
+  barListTrack: {
+    flex: 1,
+    height: 14,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 7,
+    overflow: 'hidden',
+    marginHorizontal: 8,
+  },
+  barListFill: {
+    height: '100%',
+    borderRadius: 7,
+  },
+  barListValue: {
+    width: 28,
+    textAlign: 'right',
+    color: '#6b7280',
+    fontSize: 14,
+  },
+
   // Chart Colors
   chartBarBlue: {
     backgroundColor: '#3b82f6',
@@ -193,6 +276,15 @@ export const analyticsStyles = StyleSheet.create({
   },
   chartBarGray: {
     backgroundColor: '#6b7280',
+  },
+  chartBarYellow: {
+    backgroundColor: '#f59e0b',
+  },
+  chartBarPink: {
+    backgroundColor: '#ec4899',
+  },
+  chartBarRed: {
+    backgroundColor: '#ef4444',
   },
 
   // Analysis Section

@@ -159,7 +159,8 @@ export const trackingStyles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: 'white',
     borderRadius: 16,
-    padding: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
     marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -169,8 +170,8 @@ export const trackingStyles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -179,7 +180,7 @@ export const trackingStyles = StyleSheet.create({
     backgroundColor: '#7c3aed', // Purple
   },
   tabText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   activeTabText: {
@@ -388,11 +389,15 @@ export const trackingStyles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 24,
+    flexWrap: 'wrap',
+    gap: 8,
   },
   navButton: {
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
+    flexGrow: 1,
+    alignItems: 'center',
   },
   navButtonDisabled: {
     backgroundColor: '#e5e7eb',
@@ -573,5 +578,105 @@ export const trackingStyles = StyleSheet.create({
   successToastText: {
     color: 'white',
     fontWeight: '600',
+  },
+
+  // Camera analyze button
+  cameraButton: {
+    marginTop: 8,
+    marginBottom: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  cameraButtonText: {
+    fontWeight: '600',
+    color: '#374151',
+  },
+
+  // Modal + progress
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  modalSubtitle: {
+    marginTop: 4,
+    color: '#6b7280',
+  },
+  modalImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: 8,
+    marginTop: 12,
+    marginBottom: 12,
+    backgroundColor: '#f3f4f6',
+  },
+  modalImageContainer: {
+    position: 'relative',
+  },
+  imageProgressOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
+  },
+  imageProgressTrack: {
+    height: 6,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  imageProgressFill: {
+    height: '100%',
+    backgroundColor: '#f59e0b',
+    borderRadius: 4,
+  },
+  modalTopProgressContainer: {
+    height: 6,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  modalTopProgressFill: {
+    height: '100%',
+    backgroundColor: '#7c3aed',
+  },
+
+  // Calories styles
+  caloriesRow: {
+    marginTop: 10,
+  },
+  caloriesText: {
+    color: '#6b7280',
+    fontSize: 14,
+  },
+  caloriesHighlight: {
+    color: '#f59e0b',
+    fontWeight: '700',
   },
 }); 
