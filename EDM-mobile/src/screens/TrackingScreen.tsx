@@ -349,6 +349,36 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
     } catch {}
   };
 
+  const clearAllAssignments = async (kind: 'sleep' | 'sport') => {
+    if (!user) return;
+    try {
+      if (kind === 'sleep') {
+        setSleepRoutineByWeekday({});
+        setSleepRoutineNameByWeekday({});
+        await Promise.all([
+          AsyncStorage.setItem(`sleepRoutineByWeekday:${user.id}`, JSON.stringify({})),
+          AsyncStorage.setItem(`sleepRoutineNames:${user.id}`, JSON.stringify({})),
+        ]);
+      } else {
+        setSportRoutineByWeekday({});
+        setSportRoutineNameByWeekday({});
+        await Promise.all([
+          AsyncStorage.setItem(`sportRoutineByWeekday:${user.id}`, JSON.stringify({})),
+          AsyncStorage.setItem(`sportRoutineNames:${user.id}`, JSON.stringify({})),
+        ]);
+      }
+    } catch {}
+  };
+
+  const computeGroupHours = (days: number[]): number => {
+    if (!days || days.length === 0) return 0;
+    const d = days[0];
+    const tpl = sportRoutineByWeekday[d];
+    if (!tpl) return 0;
+    const totalMin = Object.values(tpl.durations || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+    return Math.round((totalMin / 60) * 10) / 10;
+  };
+
   // Auto-calculate sleep duration when bedTime or wakeTime changes
   useEffect(() => {
     if (sleepData.bedTime && sleepData.wakeTime) {
@@ -1250,13 +1280,26 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
               <View style={{ borderWidth: 1, borderColor: '#fecdd3', backgroundColor: '#fff1f2', padding: 10, borderRadius: 12, marginBottom: 10 }}>
                 <Text style={{ color: '#111827', fontWeight: '800', marginBottom: 4 }}>Selected sport routines</Text>
                 {groups.map(g => (
-                  <View key={`${g.name}`} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-                    <Text style={{ color: '#6b7280' }}>{g.name}: {formatDaysList(g.days)} — {(g.activities||[]).join(', ')}</Text>
-                    <TouchableOpacity onPress={() => clearRoutineFromDays('sport', g.days, g.name)}>
-                      <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                    </TouchableOpacity>
+                  <View key={`${g.name}`} style={{ marginTop: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={{ color: '#111827', fontWeight: '700' }}>{g.name}</Text>
+                      <TouchableOpacity onPress={() => clearRoutineFromDays('sport', g.days, g.name)}>
+                        <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={{ color: '#6b7280' }}>Sports: {(g.activities||[]).join(', ')}</Text>
+                    <Text style={{ color: '#6b7280' }}>Days: {formatDaysList(g.days)}</Text>
+                    <Text style={{ color: '#6b7280' }}>Hours: {computeGroupHours(g.days)}h</Text>
                   </View>
                 ))}
+                {(() => { const remaining = [0,1,2,3,4,5,6].filter(x => !sportRoutineByWeekday[x]); return (
+                  <Text style={{ color: '#6b7280', marginTop: 8 }}>Remaining days: {remaining.length > 0 ? formatDaysList(remaining) : '(no routine)'}</Text>
+                ); })()}
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
+                  <TouchableOpacity onPress={() => clearAllAssignments('sport')} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#fee2e2' }}>
+                    <Text style={{ color: '#9f1239', fontWeight: '700' }}>Clear all</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             );
           })()}
@@ -1383,7 +1426,14 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                     </TouchableOpacity>
                   </View>
                 ))}
-                {(() => { const remaining = [0,1,2,3,4,5,6].filter(x => !sleepRoutineByWeekday[x]); return remaining.length > 0 ? (<Text style={{ color: '#6b7280', marginTop: 4 }}>Remaining days: {formatDaysList(remaining)}</Text>) : null; })()}
+                {(() => { const remaining = [0,1,2,3,4,5,6].filter(x => !sleepRoutineByWeekday[x]); return (
+                  <Text style={{ color: '#6b7280', marginTop: 8 }}>Remaining days: {remaining.length > 0 ? formatDaysList(remaining) : '(no routine)'}</Text>
+                ); })()}
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
+                  <TouchableOpacity onPress={() => clearAllAssignments('sleep')} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#fee2e2' }}>
+                    <Text style={{ color: '#9f1239', fontWeight: '700' }}>Clear all</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             );
           })()}
@@ -1552,6 +1602,21 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
               }} style={{ backgroundColor: '#111827', paddingVertical: 12, borderRadius: 12, marginTop: 10, alignItems: 'center' }}>
                 <Text style={{ color: 'white', fontWeight: '800' }}>Apply to {formatDaysList(sleepDaysSelected)}</Text>
               </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TouchableOpacity onPress={async () => {
+                  const days = Array.from(new Set(sleepDaysSelected)).sort();
+                  if (days.length === 0) return;
+                  await clearRoutineFromDays('sleep', days, r.name);
+                }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#f3f4f6' }}>
+                  <Text style={{ color: '#111827', fontWeight: '700' }}>Remove from selected days</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={async () => {
+                  const allDays = Object.keys(sleepRoutineNameByWeekday).map(n => Number(n)).filter(d => sleepRoutineNameByWeekday[d] === r.name);
+                  await clearRoutineFromDays('sleep', allDays, r.name);
+                }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#fee2e2' }}>
+                  <Text style={{ color: '#9f1239', fontWeight: '700' }}>Clear all days</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))}
 
@@ -1669,8 +1734,29 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
               }} style={{ backgroundColor: '#111827', paddingVertical: 12, borderRadius: 12, marginTop: 10, alignItems: 'center' }}>
                 <Text style={{ color: 'white', fontWeight: '800' }}>Apply to {formatDaysList(sportDaysSelected)}</Text>
               </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TouchableOpacity onPress={async () => {
+                  const days = Array.from(new Set(sportDaysSelected)).sort();
+                  if (days.length === 0) return;
+                  await clearRoutineFromDays('sport', days, r.name);
+                }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#f3f4f6' }}>
+                  <Text style={{ color: '#111827', fontWeight: '700' }}>Remove from selected days</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={async () => {
+                  const allDays = Object.keys(sportRoutineNameByWeekday).map(n => Number(n)).filter(d => sportRoutineNameByWeekday[d] === r.name);
+                  await clearRoutineFromDays('sport', allDays, r.name);
+                }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#fee2e2' }}>
+                  <Text style={{ color: '#9f1239', fontWeight: '700' }}>Clear all days</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))}
+
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
+            <TouchableOpacity onPress={() => clearAllAssignments('sport')} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#fee2e2' }}>
+              <Text style={{ color: '#9f1239', fontWeight: '700' }}>Clear all routines</Text>
+            </TouchableOpacity>
+          </View>
 
           <Text style={{ color: '#111827', fontWeight: '800', marginTop: 18, marginBottom: 8 }}>Select days to apply routine:</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
