@@ -2497,11 +2497,7 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
             );
           })}
 
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
-            <TouchableOpacity onPress={() => clearAllAssignments('sport')} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#fee2e2' }}>
-              <Text style={{ color: '#9f1239', fontWeight: '700' }}>Clear all routines</Text>
-            </TouchableOpacity>
-          </View>
+
 
           {/* Days selection for applying routines - Only when creating AND selecting days */}
           {showSportDaysStep && creatingSport && (
