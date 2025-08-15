@@ -8,7 +8,7 @@ class TrackingService {
 
   async createTracking(userId: string, date: string, data: DailyRecord): Promise<DailyRecord> {
     const key = await this.getTrackingKey(userId, date);
-    const payload: DailyRecord = { date, ...(data || {}) } as DailyRecord;
+    const payload: DailyRecord = { ...(data || {}), date } as DailyRecord;
     await AsyncStorage.setItem(key, JSON.stringify(payload));
     return payload;
   }

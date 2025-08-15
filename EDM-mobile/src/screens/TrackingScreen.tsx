@@ -94,7 +94,7 @@ type CopyPreset = 'this' | 'weekdays' | 'all' | 'custom';
 type SleepHabits = { bed: Array<[string, number]>; wake: Array<[string, number]>; avgDur: number } | null;
 type SportHabit = { name: string; count: number; avgMin: number };
 
-export default function TrackingScreen({ route }: { route?: { params?: { initialTab?: TabType } } }) {
+export default function TrackingScreen({ route }: { route?: { params?: { initialTab?: TabType; openSleepRoutineManager?: boolean } } }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const navigation = useNavigation();
@@ -136,6 +136,7 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
     sleepQuality: 0,
     sleepDuration: 0
   });
+  const [sleepQualityPickerOpen, setSleepQualityPickerOpen] = useState(false);
 
   // Weekly routine templates per weekday (0=Sun..6=Sat)
   const [sportRoutineByWeekday, setSportRoutineByWeekday] = useState<Record<number, { activities: string[]; durations: Record<string, number> }>>({});
@@ -152,25 +153,59 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
   const [sportDaysSelected, setSportDaysSelected] = useState<number[]>([]);
   // Create routine states
   const [creatingSleep, setCreatingSleep] = useState(false);
+  const [showSleepDaysStep, setShowSleepDaysStep] = useState(false); // Show days selection after routine config
+ 
   const [newSleepName, setNewSleepName] = useState('');
   const [newSleepBed, setNewSleepBed] = useState('23:00');
   const [newSleepWake, setNewSleepWake] = useState('07:00');
 
   const [creatingSport, setCreatingSport] = useState(false);
-  const [newSportName, setNewSportName] = useState('');
+  const [showSportDaysStep, setShowSportDaysStep] = useState(false); // Show days selection for sport routines
+  const [showSportActivitiesStep, setShowSportActivitiesStep] = useState(false); // Show activities selection
+  const [showSportDurationsStep, setShowSportDurationsStep] = useState(false); // Show durations selection
+
   const [newSportActivities, setNewSportActivities] = useState<string[]>([]);
   const [newSportDurations, setNewSportDurations] = useState<Record<string, number>>({});
 
   const ROUTINE_NAME_PRESETS = ['Routine 1','Routine 2','Routine 3','Routine 4'];
-  const BED_PRESETS = ['21:00','22:00','23:00','00:00'];
-  const WAKE_PRESETS = ['06:00','07:00','08:00','09:00'];
+  // Generate full 24-hour options at 15-minute steps
+  const generateTimeOptions = (stepMin: number = 15): string[] => {
+    const options: string[] = [];
+    for (let h = 0; h < 24; h++) {
+      for (let m = 0; m < 60; m += stepMin) {
+        const hh = String(h).padStart(2, '0');
+        const mm = String(m).padStart(2, '0');
+        options.push(`${hh}:${mm}`);
+      }
+    }
+    return options;
+  };
+  const TIME_OPTIONS = generateTimeOptions(15);
   const DURATION_PRESETS = [15, 30, 45, 60];
+
+  // New: time picker lists for "select" UX
+  const HOURS = Array.from({ length: 24 }, (_, i) => i);
+  const MINUTES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+
+  // New: intelligent routine name generator (Routine 1, Routine 2, ...)
+  function generateNextRoutineName(existing: string[]): string {
+    const pattern = /^Routine\s+(\d{1,3})$/i;
+    const nums = existing
+      .map(n => {
+        const m = n.match(pattern);
+        return m ? parseInt(m[1]) : 0;
+      })
+      .filter(n => n > 0);
+    const next = (nums.length > 0 ? Math.max(...nums) + 1 : 1);
+    return `Routine ${next}`;
+  }
 
   // Custom time picker for sleep presets
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [timePickerTarget, setTimePickerTarget] = useState<'bed' | 'wake'>('bed');
   const [tempHour, setTempHour] = useState<number>(23);
   const [tempMinute, setTempMinute] = useState<number>(0);
+  const [timePickerForNewRoutine, setTimePickerForNewRoutine] = useState<boolean>(false);
   const pad2 = (n: number) => String(n).padStart(2, '0');
 
   // Helpers to simplify weekly routine behavior
@@ -213,18 +248,18 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
   const formatDaysList = (days: number[]) => days.sort((a,b)=>a-b).map(d => WEEKDAYS[d]).join(', ');
 
   // Prefill from templates automatically when editing and no data present
-  const prefillFromTemplate = (kind: 'sleep' | 'sport') => {
+  const prefillFromTemplate = (kind: 'sleep' | 'sport', force: boolean = false) => {
     if (!user) return;
     const day = selectedDate.getDay();
     if (kind === 'sleep' && isSleepEditing) {
       const tpl = sleepRoutineByWeekday[day];
-      if (tpl && !sleepData.bedTime && !sleepData.wakeTime) {
+      if (tpl && (force || (!sleepData.bedTime && !sleepData.wakeTime))) {
         setSleepData({ ...tpl });
       }
     }
     if (kind === 'sport' && isSportEditing) {
       const tpl = sportRoutineByWeekday[day];
-      if (tpl && selectedSports.length === 0) {
+      if (tpl && (force || selectedSports.length === 0)) {
         setSelectedSports(tpl.activities);
         setSportDurations(tpl.durations || {});
       }
@@ -355,16 +390,20 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
       if (kind === 'sleep') {
         setSleepRoutineByWeekday({});
         setSleepRoutineNameByWeekday({});
+        setSleepRoutines([]); // Also clear the routines list
         await Promise.all([
           AsyncStorage.setItem(`sleepRoutineByWeekday:${user.id}`, JSON.stringify({})),
           AsyncStorage.setItem(`sleepRoutineNames:${user.id}`, JSON.stringify({})),
+          AsyncStorage.setItem(`sleepRoutines:${user.id}`, JSON.stringify([])), // Clear routines from storage
         ]);
       } else {
         setSportRoutineByWeekday({});
         setSportRoutineNameByWeekday({});
+        setSportRoutines([]); // Also clear the routines list
         await Promise.all([
           AsyncStorage.setItem(`sportRoutineByWeekday:${user.id}`, JSON.stringify({})),
           AsyncStorage.setItem(`sportRoutineNames:${user.id}`, JSON.stringify({})),
+          AsyncStorage.setItem(`sportRoutines:${user.id}`, JSON.stringify([])), // Clear routines from storage
         ]);
       }
     } catch {}
@@ -394,6 +433,19 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
       }
     }
   }, [sleepData.bedTime, sleepData.wakeTime]);
+
+  // Prefill from routines when switching to edit mode
+  useEffect(() => {
+    if (user && isSleepEditing && !hasSleepSaved) {
+      prefillFromTemplate('sleep');
+    }
+  }, [isSleepEditing, user, selectedDate]);
+
+  useEffect(() => {
+    if (user && isSportEditing && !hasSportSaved) {
+      prefillFromTemplate('sport');
+    }
+  }, [isSportEditing, user, selectedDate]);
 
   // Load saved data when component mounts or date changes
   useEffect(() => {
@@ -1267,7 +1319,11 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
           <Text style={[trackingStyles.sportActivityTitle, { marginBottom: 8 }]}> 
             {(() => { const d = new Date(selectedDate).getDay(); const nm = sportRoutineNameByWeekday[d]; return sportRoutineByWeekday[d] ? `${nm || 'Routine'} applied` : 'Data is already saved for this day.'; })()} 
           </Text>
-          <TouchableOpacity onPress={() => setIsSportEditing(true)} style={[trackingStyles.saveButton, { backgroundColor: '#e5e7eb' }]}> 
+          <TouchableOpacity onPress={() => {
+            setIsSportEditing(true);
+            // Force prefill from routine if available for this day
+            setTimeout(() => prefillFromTemplate('sport', true), 100);
+          }} style={[trackingStyles.saveButton, { backgroundColor: '#e5e7eb' }]}> 
             <Text style={[trackingStyles.saveButtonText, { color: '#111827' }]}>Edit</Text>
           </TouchableOpacity>
         </View>
@@ -1277,27 +1333,89 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
             const groups = groupSportAssignments();
             if (groups.length === 0) return null;
             return (
-              <View style={{ borderWidth: 1, borderColor: '#fecdd3', backgroundColor: '#fff1f2', padding: 10, borderRadius: 12, marginBottom: 10 }}>
-                <Text style={{ color: '#111827', fontWeight: '800', marginBottom: 4 }}>Selected sport routines</Text>
+              <View style={{ borderWidth: 1, borderColor: '#d1fae5', backgroundColor: '#f0fdf4', padding: 16, borderRadius: 12, marginBottom: 10 }}>
+                <Text style={{ color: '#111827', fontWeight: '800', marginBottom: 12, fontSize: 16 }}>Sport Routines</Text>
+                
+                {/* Active Routines Section */}
+                <ScrollView 
+                  style={{ maxHeight: 300, marginBottom: 12 }}
+                  showsVerticalScrollIndicator={true}
+                  nestedScrollEnabled={true}
+                >
                 {groups.map(g => (
-                  <View key={`${g.name}`} style={{ marginTop: 6 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Text style={{ color: '#111827', fontWeight: '700' }}>{g.name}</Text>
-                      <TouchableOpacity onPress={() => clearRoutineFromDays('sport', g.days, g.name)}>
+                    <View key={`${g.name}`} style={{ 
+                      backgroundColor: '#ffffff', 
+                      padding: 12, 
+                      borderRadius: 8, 
+                      marginBottom: 8,
+                      borderWidth: 1,
+                      borderColor: '#10b981'
+                    }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={{ color: '#10b981', fontWeight: '700', fontSize: 15 }}>{g.name}</Text>
+                        <TouchableOpacity onPress={() => clearRoutineFromDays('sport', g.days, g.name)} style={{ padding: 4 }}>
                         <Ionicons name="trash-outline" size={18} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
-                    <Text style={{ color: '#6b7280' }}>Sports: {(g.activities||[]).join(', ')}</Text>
-                    <Text style={{ color: '#6b7280' }}>Days: {formatDaysList(g.days)}</Text>
-                    <Text style={{ color: '#6b7280' }}>Hours: {computeGroupHours(g.days)}h</Text>
+                      <Text style={{ color: '#6b7280', fontSize: 13, marginBottom: 2 }}>
+                        Sports: {(g.activities||[]).join(', ')}
+                      </Text>
+                      <Text style={{ color: '#6b7280', fontSize: 13, marginBottom: 2 }}>
+                        Days: {formatDaysList(g.days)}
+                      </Text>
+                      <Text style={{ color: '#6b7280', fontSize: 13 }}>
+                        Duration: {computeGroupHours(g.days)}h total
+                      </Text>
                   </View>
                 ))}
-                {(() => { const remaining = [0,1,2,3,4,5,6].filter(x => !sportRoutineByWeekday[x]); return (
-                  <Text style={{ color: '#6b7280', marginTop: 8 }}>Remaining days: {remaining.length > 0 ? formatDaysList(remaining) : '(no routine)'}</Text>
-                ); })()}
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
-                  <TouchableOpacity onPress={() => clearAllAssignments('sport')} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#fee2e2' }}>
-                    <Text style={{ color: '#9f1239', fontWeight: '700' }}>Clear all</Text>
+                </ScrollView>
+
+                {/* Remaining Days Section */}
+                {(() => { 
+                  const remaining = [0,1,2,3,4,5,6].filter(x => !sportRoutineByWeekday[x]); 
+                  return remaining.length > 0 ? (
+                    <View style={{ 
+                      backgroundColor: '#f8fafc', 
+                      padding: 10, 
+                      borderRadius: 8, 
+                      borderWidth: 1, 
+                      borderColor: '#e2e8f0',
+                      marginBottom: 12
+                    }}>
+                      <Text style={{ color: '#475569', fontSize: 14, fontWeight: '600' }}>
+                        Available days: {formatDaysList(remaining)}
+                      </Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        Create routines to assign to these days
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ 
+                      backgroundColor: '#f0fdf4', 
+                      padding: 10, 
+                      borderRadius: 8, 
+                      borderWidth: 1, 
+                      borderColor: '#bbf7d0',
+                      marginBottom: 12
+                    }}>
+                      <Text style={{ color: '#059669', fontSize: 14, fontWeight: '600' }}>
+                        ✓ All days have routines assigned
+                      </Text>
+                    </View>
+                  ); 
+                })()}
+
+                {/* Actions */}
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                  <TouchableOpacity onPress={() => clearAllAssignments('sport')} style={{ 
+                    paddingHorizontal: 12, 
+                    paddingVertical: 8, 
+                    borderRadius: 8, 
+                    backgroundColor: '#fee2e2',
+                    borderWidth: 1,
+                    borderColor: '#fecaca'
+                  }}>
+                    <Text style={{ color: '#9f1239', fontWeight: '700', fontSize: 13 }}>Clear All Routines</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1402,92 +1520,365 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
         </View>
       </View>
       {hasSleepSaved && !isSleepEditing ? (
-        <View style={[trackingStyles.sportActivityCard, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }]}> 
-          <Text style={[trackingStyles.sportActivityTitle, { marginBottom: 8 }]}> 
-            {(() => { const d = new Date(selectedDate).getDay(); const nm = sleepRoutineNameByWeekday[d]; return sleepRoutineByWeekday[d] ? `${nm || 'Routine'} applied` : 'Data is already saved for this day.'; })()} 
-          </Text>
-          <TouchableOpacity onPress={() => setIsSleepEditing(true)} style={[trackingStyles.saveButton, { backgroundColor: '#e5e7eb' }]}> 
-            <Text style={[trackingStyles.saveButtonText, { color: '#111827' }]}>Edit</Text>
-          </TouchableOpacity>
-        </View>
+        (() => {
+          const d = new Date(selectedDate).getDay();
+          const nm = sleepRoutineNameByWeekday[d];
+          const routine = sleepRoutineByWeekday[d];
+          const hasRoutine = !!routine;
+          
+          // Check if user followed their routine (if they have one)
+          let routineFollowed = true;
+          let routineMessage = hasRoutine ? `${nm || 'Routine'} applied` : 'Data is already saved for this day.';
+          
+          if (hasRoutine && sleepData.bedTime && sleepData.wakeTime) {
+            const actualBed = sleepData.bedTime;
+            const actualWake = sleepData.wakeTime;
+            const routineBed = routine.bedTime;
+            const routineWake = routine.wakeTime;
+            
+            routineFollowed = actualBed === routineBed && actualWake === routineWake;
+            
+            if (!routineFollowed) {
+              routineMessage = `${nm || 'Routine'} - Times modified`;
+            }
+          }
+          
+          return (
+            <View style={[
+              trackingStyles.sportActivityCard, 
+              { 
+                backgroundColor: routineFollowed ? '#eef2ff' : '#fef3c7', 
+                borderColor: routineFollowed ? '#c7d2fe' : '#f59e0b' 
+              }
+            ]}> 
+              <Text style={[trackingStyles.sportActivityTitle, { marginBottom: 8 }]}> 
+                {routineMessage}
+              </Text>
+              {hasRoutine && !routineFollowed && (
+                <Text style={{ color: '#92400e', fontSize: 14, marginBottom: 8, fontStyle: 'italic' }}>
+                  Routine: {routine.bedTime} → {routine.wakeTime} • Actual: {sleepData.bedTime} → {sleepData.wakeTime}
+                </Text>
+              )}
+              <TouchableOpacity onPress={() => {
+                setIsSleepEditing(true);
+                // Force prefill from routine if available for this day
+                setTimeout(() => prefillFromTemplate('sleep', true), 100);
+              }} style={[trackingStyles.saveButton, { backgroundColor: '#e5e7eb' }]}> 
+                <Text style={[trackingStyles.saveButtonText, { color: '#111827' }]}>
+                  {hasRoutine && !routineFollowed ? 'Edit for this day' : 'Edit'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })()
       ) : (
         <>
+          {/* Manage Routines Button - Always visible */}
+          <TouchableOpacity onPress={() => setSleepRoutineModalOpen(true)} style={[trackingStyles.cameraButton, { backgroundColor: '#111827', marginTop: 16, marginBottom: 10 }]}> 
+            <Ionicons name="time-outline" size={18} color="#ffffff" />
+            <Text style={[trackingStyles.cameraButtonText, { color: '#ffffff' }]}>Manage Sleep Routines</Text>
+          </TouchableOpacity>
+
           {(() => {
             const groups = groupSleepAssignments();
             if (groups.length === 0) return null;
             return (
-              <View style={{ borderWidth: 1, borderColor: '#fecdd3', backgroundColor: '#fff1f2', padding: 10, borderRadius: 12, marginBottom: 10 }}>
-                <Text style={{ color: '#111827', fontWeight: '800', marginBottom: 4 }}>Selected sleep routines</Text>
+              <View style={{ borderWidth: 1, borderColor: '#e0e7ff', backgroundColor: '#f0f4ff', padding: 12, borderRadius: 8, marginBottom: 8 }}>
+                <Text style={{ color: '#111827', fontWeight: '700', marginBottom: 8, fontSize: 14 }}>Sleep Routines</Text>
+                
+                {/* Active Routines Section - Compact */}
+                <ScrollView 
+                  style={{ maxHeight: 200, marginBottom: 8 }}
+                  showsVerticalScrollIndicator={true}
+                  nestedScrollEnabled={true}
+                >
                 {groups.map(g => (
-                  <View key={`${g.name}-${g.bedTime}-${g.wakeTime}`} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-                    <Text style={{ color: '#6b7280' }}>{g.name}: {g.bedTime} → {g.wakeTime} — {formatDaysList(g.days)}</Text>
-                    <TouchableOpacity onPress={() => clearRoutineFromDays('sleep', g.days, g.name)}>
-                      <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                    <View key={`${g.name}-${g.bedTime}-${g.wakeTime}`} style={{ 
+                      backgroundColor: '#ffffff', 
+                      padding: 8, 
+                      borderRadius: 6, 
+                      marginBottom: 6,
+                      borderWidth: 1,
+                      borderColor: '#7c3aed',
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between' 
+                    }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#7c3aed', fontWeight: '600', fontSize: 13 }}>{g.name}</Text>
+                        <Text style={{ color: '#6b7280', fontSize: 11, marginTop: 1 }}>
+                          {g.bedTime} → {g.wakeTime} • {formatDaysList(g.days)}
+                        </Text>
+                      </View>
+                      <TouchableOpacity onPress={() => clearRoutineFromDays('sleep', g.days, g.name)} style={{ padding: 2 }}>
+                      <Ionicons name="trash-outline" size={16} color="#ef4444" />
                     </TouchableOpacity>
                   </View>
                 ))}
-                {(() => { const remaining = [0,1,2,3,4,5,6].filter(x => !sleepRoutineByWeekday[x]); return (
-                  <Text style={{ color: '#6b7280', marginTop: 8 }}>Remaining days: {remaining.length > 0 ? formatDaysList(remaining) : '(no routine)'}</Text>
-                ); })()}
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
-                  <TouchableOpacity onPress={() => clearAllAssignments('sleep')} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#fee2e2' }}>
-                    <Text style={{ color: '#9f1239', fontWeight: '700' }}>Clear all</Text>
+                </ScrollView>
+
+                {/* Remaining Days Section */}
+                {(() => { 
+                  const remaining = [0,1,2,3,4,5,6].filter(x => !sleepRoutineByWeekday[x]); 
+                  return remaining.length > 0 ? (
+                    <View style={{ 
+                      backgroundColor: '#f8fafc', 
+                      padding: 10, 
+                      borderRadius: 8, 
+                      borderWidth: 1, 
+                      borderColor: '#e2e8f0',
+                      marginBottom: 12
+                    }}>
+                      <Text style={{ color: '#475569', fontSize: 14, fontWeight: '600' }}>
+                        Available days: {formatDaysList(remaining)}
+                      </Text>
+                      <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
+                        Create routines to assign to these days
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ 
+                      backgroundColor: '#f0fdf4', 
+                      padding: 10, 
+                      borderRadius: 8, 
+                      borderWidth: 1, 
+                      borderColor: '#bbf7d0',
+                      marginBottom: 12
+                    }}>
+                      <Text style={{ color: '#059669', fontSize: 14, fontWeight: '600' }}>
+                        ✓ All days have routines assigned
+                      </Text>
+                    </View>
+                  ); 
+                })()}
+
+                {/* Actions */}
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                  <TouchableOpacity onPress={() => clearAllAssignments('sleep')} style={{ 
+                    paddingHorizontal: 12, 
+                    paddingVertical: 8, 
+                    borderRadius: 8, 
+                    backgroundColor: '#fee2e2',
+                    borderWidth: 1,
+                    borderColor: '#fecaca'
+                  }}>
+                    <Text style={{ color: '#9f1239', fontWeight: '700', fontSize: 13 }}>Clear All Routines</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             );
           })()}
-          <TouchableOpacity onPress={() => setSleepRoutineModalOpen(true)} style={[trackingStyles.cameraButton, { backgroundColor: '#111827' }]}> 
-            <Ionicons name="time-outline" size={18} color="#ffffff" />
-            <Text style={[trackingStyles.cameraButtonText, { color: '#ffffff' }]}>Manage Routines</Text>
-          </TouchableOpacity>
-          <View style={trackingStyles.sportActivityCard}>
-            <Text style={trackingStyles.sportActivityTitle}>Sleep Schedule</Text>
-            <View style={trackingStyles.sportActivityRow}>
-              <Text style={trackingStyles.sportActivityLabel}>Bedtime:</Text>
-              <TextInput value={sleepData.bedTime} onChangeText={(text) => setSleepData(prev => ({ ...prev, bedTime: text }))} style={trackingStyles.sportActivityInput} placeholder="e.g., 23:00" />
-            </View>
-            <View style={trackingStyles.sportActivityRow}>
-              <Text style={trackingStyles.sportActivityLabel}>Wake time:</Text>
-              <TextInput value={sleepData.wakeTime} onChangeText={(text) => setSleepData(prev => ({ ...prev, wakeTime: text }))} style={trackingStyles.sportActivityInput} placeholder="e.g., 07:00" />
-            </View>
-            <View style={trackingStyles.sportActivityRow}>
-              <Text style={trackingStyles.sportActivityLabel}>Sleep quality (1-10):</Text>
-              <TextInput
-                value={String(sleepData.sleepQuality || '')}
-                onChangeText={(text) => {
-                  const quality = parseInt(text) || 0;
-                  setSleepData(prev => ({ ...prev, sleepQuality: Math.max(0, Math.min(10, quality)) }));
-                }}
-                keyboardType="numeric"
-                style={trackingStyles.sportActivityInput}
-                placeholder="8"
-              />
-            </View>
-            <View style={trackingStyles.sportActivityRow}>
-              <Text style={trackingStyles.sportActivityLabel}>Duration:</Text>
-              <View style={[trackingStyles.sportActivityInput, { justifyContent: 'center', backgroundColor: '#f3f4f6' }]}>
-                <Text style={{ color: '#6b7280', fontSize: 16 }}>
-                  {sleepData.sleepDuration > 0 ? `${sleepData.sleepDuration}h` : 'Auto-calculated'}
-                </Text>
-              </View>
-            </View>
-          </View>
-          <TouchableOpacity onPress={async () => {
-            let calculatedDuration = sleepData.sleepDuration;
-            if (sleepData.bedTime && sleepData.wakeTime) {
-              const bedTime = new Date(`2024-01-01 ${sleepData.bedTime}`);
-              let wakeTime = new Date(`2024-01-01 ${sleepData.wakeTime}`);
-              if (wakeTime < bedTime) wakeTime = new Date(`2024-01-02 ${sleepData.wakeTime}`);
-              const diffMs = wakeTime.getTime() - bedTime.getTime();
-              calculatedDuration = Math.round(diffMs / (1000 * 60 * 60) * 10) / 10;
+          {(() => {
+            const dayIdx = new Date(selectedDate).getDay();
+            const routineToday = sleepRoutineByWeekday[dayIdx];
+            if (routineToday) {
+              return (
+                <>
+                  <View style={[trackingStyles.sportActivityCard, { backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }]}> 
+                    <Text style={[trackingStyles.sportActivityTitle, { marginBottom: 8 }]}>
+                      {isSleepEditing ? 'Edit Sleep Schedule' : 'Routine applied for this day'}
+                    </Text>
+                    {!isSleepEditing && (
+                      <Text style={{ color: '#6b7280', marginBottom: 8 }}>{(sleepRoutineNameByWeekday[dayIdx] || 'Routine')}: {routineToday.bedTime} → {routineToday.wakeTime}</Text>
+                    )}
+                    
+                    {isSleepEditing ? (
+                      <>
+                        {/* Show editable time inputs when editing */}
+                        <View style={trackingStyles.sportActivityRow}>
+                          <View style={[trackingStyles.sportActivityLabel, { minWidth: 140 }]}>
+                            <Text style={trackingStyles.sportActivityLabelText}>Bedtime:</Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flex: 1 }}>
+                            <TouchableOpacity onPress={() => { 
+                              setTimePickerForNewRoutine(false); 
+                              setTimePickerTarget('bed'); 
+                              const [hh, mm] = (sleepData.bedTime || routineToday.bedTime || '23:00').split(':'); 
+                              setTempHour(Math.max(0, Math.min(23, parseInt(hh) || 0))); 
+                              setTempMinute(Math.max(0, Math.min(59, parseInt(mm) || 0))); 
+                              setTimePickerOpen(true); 
+                            }} style={[trackingStyles.sportActivityInput, { justifyContent: 'center' }]}> 
+                              <Text style={{ color: '#111827', fontSize: 16 }}>{sleepData.bedTime || routineToday.bedTime || 'Select'}</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                        <View style={trackingStyles.sportActivityRow}>
+                          <View style={[trackingStyles.sportActivityLabel, { minWidth: 140 }]}>
+                            <Text style={trackingStyles.sportActivityLabelText}>Wake time:</Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flex: 1 }}>
+                            <TouchableOpacity onPress={() => { 
+                              setTimePickerForNewRoutine(false); 
+                              setTimePickerTarget('wake'); 
+                              const [hh, mm] = (sleepData.wakeTime || routineToday.wakeTime || '07:00').split(':'); 
+                              setTempHour(Math.max(0, Math.min(23, parseInt(hh) || 0))); 
+                              setTempMinute(Math.max(0, Math.min(59, parseInt(mm) || 0))); 
+                              setTimePickerOpen(true); 
+                            }} style={[trackingStyles.sportActivityInput, { justifyContent: 'center' }]}> 
+                              <Text style={{ color: '#111827', fontSize: 16 }}>{sleepData.wakeTime || routineToday.wakeTime || 'Select'}</Text>
+                            </TouchableOpacity>
+                          </View>
+                                                 </View>
+                         
+                         {/* Show calculated duration when editing */}
+                         <View style={trackingStyles.sportActivityRow}>
+                           <View style={[trackingStyles.sportActivityLabel, { minWidth: 140 }]}>
+                             <Text style={trackingStyles.sportActivityLabelText}>Duration:</Text>
+                           </View>
+                           <View style={[trackingStyles.sportActivityInput, { justifyContent: 'center', backgroundColor: '#f3f4f6', flex: 1 }]}> 
+                             <Text style={{ color: '#6b7280', fontSize: 16 }}>
+                               {(() => {
+                                 const bed = sleepData.bedTime || routineToday.bedTime;
+                                 const wake = sleepData.wakeTime || routineToday.wakeTime;
+                                 if (bed && wake) {
+                                   const bedTime = new Date(`2024-01-01 ${bed}`);
+                                   let wakeTime = new Date(`2024-01-01 ${wake}`);
+                                   if (wakeTime < bedTime) {
+                                     wakeTime = new Date(`2024-01-02 ${wake}`);
+                                   }
+                                   const diffMs = wakeTime.getTime() - bedTime.getTime();
+                                   const duration = Math.round(diffMs / (1000 * 60 * 60) * 10) / 10;
+                                   return `${duration}h (auto)`;
+                                 }
+                                 return '0h (auto)';
+                               })()}
+                             </Text>
+                           </View>
+                         </View>
+                       </>
+                     ) : null}
+                     
+                     <View style={[trackingStyles.sportActivityRow, { marginTop: isSleepEditing ? 0 : 12 }]}>
+                      <View style={[trackingStyles.sportActivityLabel, { minWidth: 140 }]}>
+                        <Text style={trackingStyles.sportActivityLabelText}>Sleep quality (1-10):</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flex: 1 }}>
+                        <TouchableOpacity onPress={() => setSleepQualityPickerOpen(true)} style={[trackingStyles.sportActivityInput, { justifyContent: 'center' }]}> 
+                          <Text style={{ color: '#111827', fontSize: 16 }}>{sleepData.sleepQuality ? String(sleepData.sleepQuality) : 'Select'}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                  <TouchableOpacity onPress={async () => {
+                    // Use edited times if available, otherwise use routine times
+                    const bedTime = sleepData.bedTime || routineToday.bedTime;
+                    const wakeTime = sleepData.wakeTime || routineToday.wakeTime;
+                    let calculatedDuration = 0;
+                    if (bedTime && wakeTime) {
+                      const b = new Date(`2024-01-01 ${bedTime}`);
+                      let w = new Date(`2024-01-01 ${wakeTime}`);
+                      if (w < b) w = new Date(`2024-01-02 ${wakeTime}`);
+                      calculatedDuration = Math.round(((w.getTime() - b.getTime()) / (1000 * 60 * 60)) * 10) / 10;
+                    }
+                    await saveToDatabase({ sleep: { bedTime, wakeTime, sleepQuality: sleepData.sleepQuality || 0, sleepDuration: calculatedDuration } });
+                    setHasSleepSaved(true);
+                    setIsSleepEditing(false);
+                  }} style={trackingStyles.saveButton}>
+                    <Text style={trackingStyles.saveButtonText}>
+                      {isSleepEditing ? 'Save Sleep Data' : "Save Today's Routine"}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              );
             }
-            await saveToDatabase({ sleep: { ...sleepData, sleepDuration: calculatedDuration } });
-            setHasSleepSaved(true);
-            setIsSleepEditing(false);
-          }} style={trackingStyles.saveButton}>
-            <Text style={trackingStyles.saveButtonText}>Save Sleep Data</Text>
-          </TouchableOpacity>
+            return (
+              <>
+                <View style={trackingStyles.sportActivityCard}>
+                  <Text style={trackingStyles.sportActivityTitle}>Sleep Schedule</Text>
+                  <View style={trackingStyles.sportActivityRow}>
+                    <View style={[trackingStyles.sportActivityLabel, { minWidth: 140 }]}>
+                      <Text style={trackingStyles.sportActivityLabelText}>Bedtime:</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flex: 1 }}>
+                      <TouchableOpacity onPress={() => { 
+                        setTimePickerForNewRoutine(false); 
+                        setTimePickerTarget('bed'); 
+                        const [hh, mm] = (sleepData.bedTime || '23:00').split(':'); 
+                        setTempHour(Math.max(0, Math.min(23, parseInt(hh) || 0))); 
+                        setTempMinute(Math.max(0, Math.min(59, parseInt(mm) || 0))); 
+                        setTimePickerOpen(true); 
+                      }} style={[trackingStyles.sportActivityInput, { justifyContent: 'center' }]}> 
+                        <Text style={{ color: '#111827', fontSize: 16 }}>{sleepData.bedTime || 'Select'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View style={trackingStyles.sportActivityRow}>
+                    <View style={[trackingStyles.sportActivityLabel, { minWidth: 140 }]}>
+                      <Text style={trackingStyles.sportActivityLabelText}>Wake time:</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flex: 1 }}>
+                      <TouchableOpacity onPress={() => { 
+                        setTimePickerForNewRoutine(false); 
+                        setTimePickerTarget('wake'); 
+                        const [hh, mm] = (sleepData.wakeTime || '07:00').split(':'); 
+                        setTempHour(Math.max(0, Math.min(23, parseInt(hh) || 0))); 
+                        setTempMinute(Math.max(0, Math.min(59, parseInt(mm) || 0))); 
+                        setTimePickerOpen(true); 
+                      }} style={[trackingStyles.sportActivityInput, { justifyContent: 'center' }]}> 
+                        <Text style={{ color: '#111827', fontSize: 16 }}>{sleepData.wakeTime || 'Select'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View style={trackingStyles.sportActivityRow}>
+                    <View style={[trackingStyles.sportActivityLabel, { minWidth: 140 }]}>
+                      <Text style={trackingStyles.sportActivityLabelText}>Sleep quality:</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flex: 1 }}>
+                      {(() => {
+                        const dayIdx = new Date(selectedDate).getDay();
+                        const hasRoutineToday = !!sleepRoutineByWeekday[dayIdx];
+                        return (
+                          <TouchableOpacity 
+                            onPress={() => setSleepQualityPickerOpen(true)} 
+                            style={[
+                              trackingStyles.sportActivityInput, 
+                              { 
+                                justifyContent: 'center',
+                                backgroundColor: hasRoutineToday ? '#fef3c7' : '#ffffff',
+                                borderColor: hasRoutineToday ? '#f59e0b' : '#e5e7eb',
+                                borderWidth: hasRoutineToday ? 2 : 1
+                              }
+                            ]}
+                          > 
+                            <Text style={{ 
+                              color: hasRoutineToday ? '#92400e' : '#111827', 
+                              fontSize: 16,
+                              fontWeight: hasRoutineToday ? '700' : '400'
+                            }}>
+                              {sleepData.sleepQuality ? String(sleepData.sleepQuality) : (hasRoutineToday ? 'Please rate quality ⭐' : 'Select')}
+                            </Text>
+                    </TouchableOpacity>
+                        );
+                      })()}
+                    </View>
+                  </View>
+                  <View style={trackingStyles.sportActivityRow}>
+                    <View style={[trackingStyles.sportActivityLabel, { minWidth: 140 }]}>
+                      <Text style={trackingStyles.sportActivityLabelText}>Duration:</Text>
+                    </View>
+                    <View style={[trackingStyles.sportActivityInput, { justifyContent: 'center', backgroundColor: '#f3f4f6', flex: 1 }]}> 
+                      <Text style={{ color: '#6b7280', fontSize: 16 }}>{`${sleepData.sleepDuration || 0}h (auto)`}</Text>
+                    </View>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={async () => {
+                  let calculatedDuration = sleepData.sleepDuration;
+                  if (sleepData.bedTime && sleepData.wakeTime) {
+                    const bedTime = new Date(`2024-01-01 ${sleepData.bedTime}`);
+                    let wakeTime = new Date(`2024-01-01 ${sleepData.wakeTime}`);
+                    if (wakeTime < bedTime) wakeTime = new Date(`2024-01-02 ${sleepData.wakeTime}`);
+                    const diffMs = wakeTime.getTime() - bedTime.getTime();
+                    calculatedDuration = Math.round(diffMs / (1000 * 60 * 60) * 10) / 10;
+                  }
+                  await saveToDatabase({ sleep: { ...sleepData, sleepDuration: calculatedDuration } });
+                  setHasSleepSaved(true);
+                  setIsSleepEditing(false);
+                }} style={trackingStyles.saveButton}>
+                  <Text style={trackingStyles.saveButtonText}>Save Sleep Data</Text>
+                </TouchableOpacity>
+              </>
+            );
+          })()}
         </>
       )}
     </View>
@@ -1541,17 +1932,26 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
     return list;
   };
 
+  // Optionally open Sleep Routine Manager when arriving with a specific intent
+  useEffect(() => {
+    if (route?.params?.openSleepRoutineManager) {
+      setActiveTab('sleep');
+      setSleepRoutineModalOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route?.params?.openSleepRoutineManager]);
+
   return (
     <>
     <SafeAreaView style={trackingStyles.container}>
-      <View style={trackingStyles.scrollContainer}>
-        <ScrollView style={trackingStyles.padding}>
+              <View style={trackingStyles.scrollContainer}> 
+                 <ScrollView style={trackingStyles.padding} contentContainerStyle={{ paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
           <View style={trackingStyles.header}>
             <Text style={trackingStyles.welcomeText}>Track Your Health</Text>
           </View>
           {renderProgressBar()}
           {renderTabs()}
-          <View style={trackingStyles.content}>
+                     <View style={[trackingStyles.content, { paddingBottom: 80 }]}>
             {renderContent()}
           </View>
         </ScrollView>
@@ -1565,10 +1965,10 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
 
     {/* Sleep Routine Manager */}
     <Modal visible={sleepRoutineModalOpen} transparent animationType="fade" onRequestClose={() => setSleepRoutineModalOpen(false)}>
-      <View style={trackingStyles.modalOverlay}>
-        <View style={[trackingStyles.modalCard, { maxWidth: 420 }]}> 
+      <View style={trackingStyles.modalOverlay} pointerEvents="auto">
+        <View style={[trackingStyles.modalCard, { maxWidth: 420 }]} pointerEvents="auto"> 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={[trackingStyles.modalTitle, { color: '#111827' }]}>Sleep Routines</Text>
+            <Text style={[trackingStyles.modalTitle, { color: '#111827' }]}>{creatingSleep ? 'Create New Routine' : 'Sleep Routines'}</Text>
             <TouchableOpacity onPress={() => setSleepRoutineModalOpen(false)}><Ionicons name="close" size={20} color="#111827" /></TouchableOpacity>
           </View>
 
@@ -1579,116 +1979,422 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
             </View>
           )}
 
-          {sleepRoutines.map((r) => (
-            <View key={r.id} style={{ borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 12, padding: 12, marginTop: 12 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ color: '#111827', fontWeight: '700' }}>{r.name}</Text>
+          {!creatingSleep && sleepRoutines.map((r) => {
+            const assigned = Object.keys(sleepRoutineNameByWeekday)
+              .map(n => Number(n))
+              .filter(d => sleepRoutineNameByWeekday[d] === r.name);
+            const bedTime = new Date(`2024-01-01 ${r.bedTime}`);
+            let wakeTime = new Date(`2024-01-01 ${r.wakeTime}`);
+            if (wakeTime < bedTime) {
+              wakeTime = new Date(`2024-01-02 ${r.wakeTime}`);
+            }
+            const hours = Math.round(((wakeTime.getTime() - bedTime.getTime()) / (1000 * 60 * 60)) * 10) / 10;
+            
+            return (
+              <View key={r.id} style={{ borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 12, padding: 16, marginTop: 12, backgroundColor: '#fafafa' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ color: '#111827', fontWeight: '700', fontSize: 16 }}>{r.name}</Text>
                 <TouchableOpacity onPress={async () => {
-                  const next = sleepRoutines.filter(x => x.id !== r.id);
-                  setSleepRoutines(next);
-                  if (user) await AsyncStorage.setItem(`sleepRoutines:${user.id}`, JSON.stringify(next));
+                    Alert.alert(
+                      'Delete Routine',
+                      `Are you sure you want to delete "${r.name}"? This will remove it from all assigned days.`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Delete', 
+                          style: 'destructive',
+                          onPress: async () => {
+                            // Remove routine from ALL days (not just calculated assigned days)
+                            // Search all days that have this routine name and clear them
+                            const allDaysWithThisRoutine = Object.keys(sleepRoutineNameByWeekday)
+                              .map(n => Number(n))
+                              .filter(d => sleepRoutineNameByWeekday[d] === r.name);
+                            
+                            if (allDaysWithThisRoutine.length > 0) {
+                              await clearRoutineFromDays('sleep', allDaysWithThisRoutine, r.name);
+                            }
+                            // Remove routine from saved routines
+                            const filtered = sleepRoutines.filter(x => x.id !== r.id);
+                            // Rename remaining routines sequentially (Routine 1, Routine 2, etc.)
+                            const renumbered = filtered.map((routine, index) => ({
+                              ...routine,
+                              name: `Routine ${index + 1}`
+                            }));
+                            setSleepRoutines(renumbered);
+                            if (user) await AsyncStorage.setItem(`sleepRoutines:${user.id}`, JSON.stringify(renumbered));
+                            
+                            // Update routine names in day assignments
+                            const updatedNameMap = { ...sleepRoutineNameByWeekday };
+                            Object.keys(updatedNameMap).forEach(dayKey => {
+                              const day = parseInt(dayKey);
+                              const oldName = updatedNameMap[day];
+                              const matchingRoutine = renumbered.find(routine => {
+                                const original = sleepRoutines.find(orig => orig.name === oldName);
+                                return original && routine.id === original.id;
+                              });
+                              if (matchingRoutine) {
+                                updatedNameMap[day] = matchingRoutine.name;
+                              }
+                            });
+                            setSleepRoutineNameByWeekday(updatedNameMap);
+                            if (user) await AsyncStorage.setItem(`sleepRoutineNames:${user.id}`, JSON.stringify(updatedNameMap));
+                          }
+                        }
+                      ]
+                    );
                 }}>
-                  <Ionicons name="close" size={18} color="#ef4444" />
+                    <Ionicons name="trash-outline" size={20} color="#ef4444" />
                 </TouchableOpacity>
               </View>
-              <Text style={{ color: '#6b7280', marginTop: 4 }}>{r.bedTime} → {r.wakeTime}</Text>
-              <TouchableOpacity onPress={async () => {
-                // apply to selected weekdays
-                const days = Array.from(new Set(sleepDaysSelected)).sort();
-                if (days.length === 0) return;
-                const payload: SleepRoutine = { bedTime: r.bedTime, wakeTime: r.wakeTime, sleepQuality: 0, sleepDuration: 0 };
-                await applyRoutineToDays('sleep', payload, days, r.name);
-                Alert.alert('Applied', `Applied to ${formatDaysList(days)}`);
-              }} style={{ backgroundColor: '#111827', paddingVertical: 12, borderRadius: 12, marginTop: 10, alignItems: 'center' }}>
-                <Text style={{ color: 'white', fontWeight: '800' }}>Apply to {formatDaysList(sleepDaysSelected)}</Text>
-              </TouchableOpacity>
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                <TouchableOpacity onPress={async () => {
-                  const days = Array.from(new Set(sleepDaysSelected)).sort();
-                  if (days.length === 0) return;
-                  await clearRoutineFromDays('sleep', days, r.name);
-                }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#f3f4f6' }}>
-                  <Text style={{ color: '#111827', fontWeight: '700' }}>Remove from selected days</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={async () => {
-                  const allDays = Object.keys(sleepRoutineNameByWeekday).map(n => Number(n)).filter(d => sleepRoutineNameByWeekday[d] === r.name);
-                  await clearRoutineFromDays('sleep', allDays, r.name);
-                }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#fee2e2' }}>
-                  <Text style={{ color: '#9f1239', fontWeight: '700' }}>Clear all days</Text>
-                </TouchableOpacity>
+                <Text style={{ color: '#6b7280', fontSize: 14, marginBottom: 4 }}>
+                  {r.bedTime} → {r.wakeTime} ({hours}h)
+                </Text>
+                {assigned.length > 0 ? (
+                  <Text style={{ color: '#059669', fontSize: 14, fontWeight: '600' }}>
+                    Assigned to: {formatDaysList(assigned)}
+                  </Text>
+                ) : (
+                  <Text style={{ color: '#6b7280', fontSize: 14, fontStyle: 'italic' }}>
+                    Not assigned to any days
+                  </Text>
+                )}
               </View>
-            </View>
-          ))}
+            );
+          })}
 
-          {/* Days selection */}
-          <Text style={{ color: '#111827', fontWeight: '800', marginTop: 18, marginBottom: 8 }}>Select days to apply routine:</Text>
+          {/* Days selection for applying routines - Only when creating AND selecting days */}
+          {showSleepDaysStep && creatingSleep && (
+            <>
+              <Text style={{ color: '#111827', fontWeight: '800', marginTop: 18, marginBottom: 8 }}>
+                1) Select days to assign routine:
+              </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {[0,1,2,3,4,5,6].map((d) => {
               const labels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
               const active = sleepDaysSelected.includes(d);
+                  const hasRoutine = !!sleepRoutineByWeekday[d];
+                  const routineName = sleepRoutineNameByWeekday[d];
+                  
               return (
-                <TouchableOpacity key={d} onPress={() => setSleepDaysSelected(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, backgroundColor: active ? '#111827' : '#eef2f7' }}>
-                  <Text style={{ color: active ? '#ffffff' : '#6b7280', fontWeight: '700' }}>{labels[d]}</Text>
+                    <TouchableOpacity 
+                      key={d} 
+                      onPress={() => setSleepDaysSelected(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])} 
+                      style={{ 
+                        paddingHorizontal: 16, 
+                        paddingVertical: 10, 
+                        borderRadius: 12, 
+                        backgroundColor: active ? '#111827' : (hasRoutine ? '#eef2ff' : '#eef2f7'),
+                        borderWidth: hasRoutine ? 2 : 1,
+                        borderColor: hasRoutine ? '#7c3aed' : '#e5e7eb'
+                      }}
+                    >
+                      <Text style={{ 
+                        color: active ? '#ffffff' : (hasRoutine ? '#7c3aed' : '#6b7280'), 
+                        fontWeight: '700',
+                        textAlign: 'center'
+                      }}>
+                        {labels[d]}
+                      </Text>
+                      {hasRoutine && !active && (
+                        <Text style={{ 
+                          color: '#7c3aed', 
+                          fontSize: 10, 
+                          textAlign: 'center', 
+                          marginTop: 2 
+                        }}>
+                          {routineName}
+                        </Text>
+                      )}
                 </TouchableOpacity>
               );
             })}
           </View>
+              
+              {/* Validation error */}
+              {sleepDaysSelected.length === 0 && (
+                <Text style={{ color: '#dc2626', fontSize: 14, marginTop: 8, fontWeight: '600' }}>
+                  * Please select days
+                </Text>
+              )}
+              
+              {/* Instructions */}
+              <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 8, fontStyle: 'italic' }}>
+                Days with purple borders already have routines assigned. Select days to assign a new routine.
+              </Text>
+            </>
+          )}
 
           {/* Create routine CTA */}
           {!creatingSleep ? (
-            <TouchableOpacity onPress={() => setCreatingSleep(true)} style={{ marginTop: 18, backgroundColor: '#111827', paddingVertical: 14, borderRadius: 16, alignItems: 'center' }}>
+            <TouchableOpacity onPress={() => { 
+              // Check if all days are already covered by routines
+              const allDays = [0, 1, 2, 3, 4, 5, 6];
+              const coveredDays = allDays.filter(d => !!sleepRoutineNameByWeekday[d]);
+              
+              if (coveredDays.length === 7) {
+                Alert.alert(
+                  'All Days Managed',
+                  'You already have routines for all days of the week. You can edit existing routines or delete some to create new ones.',
+                  [{ text: 'OK', style: 'default' }]
+                );
+                return;
+              }
+
+              setSleepDaysSelected([]); 
+              setNewSleepBed('23:00'); 
+              setNewSleepWake('07:00'); 
+              setShowSleepDaysStep(true); // Start with days selection first
+              setCreatingSleep(true);
+            }} style={{ marginTop: 18, backgroundColor: '#111827', paddingVertical: 14, borderRadius: 16, alignItems: 'center' }}>
               <Text style={{ color: 'white', fontWeight: '800' }}>+ Create New Routine</Text>
             </TouchableOpacity>
           ) : (
             <View style={{ marginTop: 16 }}>
-              <Text style={{ color: '#111827', fontWeight: '700' }}>Routine Name</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                {ROUTINE_NAME_PRESETS.map(n => {
-                  const active = newSleepName === n;
-                  return (
-                    <TouchableOpacity key={n} onPress={() => setNewSleepName(n)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: active ? '#111827' : '#eef2f7' }}>
-                      <Text style={{ color: active ? '#ffffff' : '#6b7280', fontWeight: '700' }}>{n}</Text>
+              {/* Sleep Schedule Card - Same design as main Sleep tab - Show only when NOT selecting days */}
+              {!showSleepDaysStep && (
+              <View style={trackingStyles.sportActivityCard}>
+                <Text style={trackingStyles.sportActivityTitle}>2) Sleep Schedule</Text>
+                                <View style={trackingStyles.sportActivityRow}>
+                  <View style={[trackingStyles.sportActivityLabel, { minWidth: 140 }]}>
+                    <Text style={trackingStyles.sportActivityLabelText}>Bedtime:</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flex: 1 }}>
+                    <TouchableOpacity onPress={() => { 
+                      setTimePickerForNewRoutine(true); 
+                      setTimePickerTarget('bed'); 
+                      const [hh, mm] = (newSleepBed || '23:00').split(':'); 
+                      setTempHour(Math.max(0, Math.min(23, parseInt(hh) || 0))); 
+                      setTempMinute(Math.max(0, Math.min(59, parseInt(mm) || 0))); 
+                      setTimePickerOpen(true); 
+                    }} style={[trackingStyles.sportActivityInput, { justifyContent: 'center' }]}> 
+                      <Text style={{ color: '#111827', fontSize: 16 }}>{newSleepBed || 'Select'}</Text>
                     </TouchableOpacity>
-                  );
-                })}
+                </View>
+                </View>
+                <View style={trackingStyles.sportActivityRow}>
+                  <View style={[trackingStyles.sportActivityLabel, { minWidth: 140 }]}>
+                    <Text style={trackingStyles.sportActivityLabelText}>Wake time:</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flex: 1 }}>
+                    <TouchableOpacity onPress={() => { 
+                      setTimePickerForNewRoutine(true); 
+                      setTimePickerTarget('wake'); 
+                      const [hh, mm] = (newSleepWake || '07:00').split(':'); 
+                      setTempHour(Math.max(0, Math.min(23, parseInt(hh) || 0))); 
+                      setTempMinute(Math.max(0, Math.min(59, parseInt(mm) || 0))); 
+                      setTimePickerOpen(true); 
+                    }} style={[trackingStyles.sportActivityInput, { justifyContent: 'center' }]}> 
+                      <Text style={{ color: '#111827', fontSize: 16 }}>{newSleepWake || 'Select'}</Text>
+                    </TouchableOpacity>
+                </View>
+                </View>
+                <View style={trackingStyles.sportActivityRow}>
+                  <View style={[trackingStyles.sportActivityLabel, { minWidth: 140 }]}>
+                    <Text style={trackingStyles.sportActivityLabelText}>Duration:</Text>
+                  </View>
+                  <View style={[trackingStyles.sportActivityInput, { justifyContent: 'center', backgroundColor: '#f3f4f6', flex: 1 }]}> 
+                    <Text style={{ color: '#6b7280', fontSize: 16 }}>
+                      {(() => {
+                        if (newSleepBed && newSleepWake) {
+                          const bedTime = new Date(`2024-01-01 ${newSleepBed}`);
+                          let wakeTime = new Date(`2024-01-01 ${newSleepWake}`);
+                          if (wakeTime < bedTime) {
+                            wakeTime = new Date(`2024-01-02 ${newSleepWake}`);
+                          }
+                          const diffMs = wakeTime.getTime() - bedTime.getTime();
+                          const duration = Math.round(diffMs / (1000 * 60 * 60) * 10) / 10;
+                          return `${duration}h (auto)`;
+                        }
+                        return '0h (auto)';
+                      })()}
+                    </Text>
+                  </View>
+                </View>
               </View>
-              <Text style={{ color: '#111827', fontWeight: '700', marginTop: 10 }}>Bedtime</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                {BED_PRESETS.map(n => { const active = newSleepBed === n; return (
-                  <TouchableOpacity key={n} onPress={() => setNewSleepBed(n)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: active ? '#111827' : '#eef2f7' }}>
-                    <Text style={{ color: active ? '#ffffff' : '#6b7280', fontWeight: '700' }}>{n}</Text>
-                  </TouchableOpacity>
-                );})}
-                <TouchableOpacity onPress={() => { setTimePickerTarget('bed'); setTimePickerOpen(true); }} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: '#fce7f3' }}>
-                  <Text style={{ color: '#9f1239', fontWeight: '700' }}>Custom</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={{ color: '#111827', fontWeight: '700', marginTop: 10 }}>Wake time</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                {WAKE_PRESETS.map(n => { const active = newSleepWake === n; return (
-                  <TouchableOpacity key={n} onPress={() => setNewSleepWake(n)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: active ? '#111827' : '#eef2f7' }}>
-                    <Text style={{ color: active ? '#ffffff' : '#6b7280', fontWeight: '700' }}>{n}</Text>
-                  </TouchableOpacity>
-                );})}
-                <TouchableOpacity onPress={() => { setTimePickerTarget('wake'); setTimePickerOpen(true); }} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: '#fce7f3' }}>
-                  <Text style={{ color: '#9f1239', fontWeight: '700' }}>Custom</Text>
-                </TouchableOpacity>
-              </View>
-
+              )}
+              {(() => {
+                // Show live conflicts for selected days
+                const conflicts = (sleepDaysSelected || []).map(d => ({ d, name: sleepRoutineNameByWeekday[d] })).filter(x => !!x.name) as Array<{ d: number; name: string }>;
+                if (conflicts.length === 0) return null;
+                const label = conflicts.map(c => `${WEEKDAYS[c.d]} (${c.name})`).join(', ');
+                return (
+                  <Text style={{ color: '#b91c1c', marginTop: 10, fontWeight: '700' }}>Conflicts: {label}</Text>
+                );
+              })()}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: 14 }}>
-                <TouchableOpacity onPress={() => { setCreatingSleep(false); setNewSleepName(''); }} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => { 
+                  setCreatingSleep(false); 
+                  setShowSleepDaysStep(false);
+                  setSleepDaysSelected([]);
+                }} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}>
                   <Text style={{ color: '#111827', fontWeight: '700' }}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={async () => {
+                <TouchableOpacity 
+                  onPress={async () => {
+                    if (showSleepDaysStep) {
+                      // Step 1: Days selected, now go to schedule configuration
+                      setShowSleepDaysStep(false);
+                      return;
+                    }
+                    
+                    // Step 2: Apply routine to selected days
+                    if (sleepDaysSelected.length === 0) {
+                      return; // Error already shown in UI
+                    }
+
+                    const days = Array.from(new Set(sleepDaysSelected)).sort();
+
+                  // Smart routine detection: check if a routine with same times already exists
+                  const existingRoutine = sleepRoutines.find(r => r.bedTime === newSleepBed && r.wakeTime === newSleepWake);
+                  
+                  if (existingRoutine) {
+                    // Automatically add days to existing routine
+                    const payload: SleepRoutine = { bedTime: newSleepBed, wakeTime: newSleepWake, sleepQuality: 0, sleepDuration: 0 } as any;
+                    await applyRoutineToDays('sleep', payload, days, existingRoutine.name);
+                    Alert.alert('Success', `Days added to ${existingRoutine.name}: ${formatDaysList(days)}`);
+                    setCreatingSleep(false);
+                    setShowSleepDaysStep(true);
+                    setSleepDaysSelected([]);
+                    return;
+                  }
+
+                  // Create new routine if no similar one exists
                   const id = String(Date.now());
-                  const chosen = newSleepName || ROUTINE_NAME_PRESETS.find(n => !sleepRoutines.some(r => r.name === n)) || 'Routine 1';
-                  const next = [...sleepRoutines, { id, name: chosen, bedTime: newSleepBed, wakeTime: newSleepWake }];
+                  const sleepRoutineName = generateNextRoutineName(sleepRoutines.map(r => r.name));
+                  const next = [...sleepRoutines, { id, name: sleepRoutineName, bedTime: newSleepBed, wakeTime: newSleepWake }];
                   setSleepRoutines(next);
                   if (user) await AsyncStorage.setItem(`sleepRoutines:${user.id}`, JSON.stringify(next));
-                  setCreatingSleep(false); setNewSleepName('');
-                }} style={{ flex: 1, backgroundColor: '#111827', paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}>
-                  <Text style={{ color: 'white', fontWeight: '800' }}>Create</Text>
+                    
+                  try {
+                      // Conflict detection: find days already assigned
+                      const conflicts = days.filter(d => !!sleepRoutineNameByWeekday[d]);
+                      if (conflicts.length > 0) {
+                        const first = conflicts[0];
+                        const assignedName = sleepRoutineNameByWeekday[first];
+                        const dayLabel = WEEKDAYS[first];
+                        Alert.alert(
+                          'Conflict',
+                          `${dayLabel} is already assigned to ${assignedName}. Reassign anyway?`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Reassign',
+                              style: 'destructive',
+                              onPress: async () => {
+                                // Group conflicts by routine name and clear them
+                                const byName = new Map<string, number[]>();
+                                conflicts.forEach(d => {
+                                  const nm = sleepRoutineNameByWeekday[d];
+                                  if (!nm) return;
+                                  const arr = byName.get(nm) || [];
+                                  arr.push(d);
+                                  byName.set(nm, arr);
+                                });
+                                Array.from(byName.entries()).forEach(async ([nm, ds]) => {
+                                  await clearRoutineFromDays('sleep', ds, nm);
+                                });
+                                const payload: SleepRoutine = { bedTime: newSleepBed, wakeTime: newSleepWake, sleepQuality: 0, sleepDuration: 0 } as any;
+                                await applyRoutineToDays('sleep', payload, days, sleepRoutineName);
+                                Alert.alert('Success', `Routine applied to ${formatDaysList(days)}`);
+                                setCreatingSleep(false);
+                                setShowSleepDaysStep(false);
+                                setSleepDaysSelected([]);
+                              }
+                            }
+                          ]
+                        );
+                        return;
+                      }
+                      const payload: SleepRoutine = { bedTime: newSleepBed, wakeTime: newSleepWake, sleepQuality: 0, sleepDuration: 0 } as any;
+                      await applyRoutineToDays('sleep', payload, days, sleepRoutineName);
+                      Alert.alert('Success', `Routine applied to ${formatDaysList(days)}`);
+                  } catch {}
+                  setCreatingSleep(false);
+                    setShowSleepDaysStep(false);
+                    setSleepDaysSelected([]);
+                  }} 
+                  style={{ 
+                    flex: 1, 
+                    backgroundColor: (showSleepDaysStep && sleepDaysSelected.length === 0) ? '#9ca3af' : '#111827', 
+                    paddingVertical: 12, 
+                    borderRadius: 12, 
+                    alignItems: 'center' 
+                  }}
+                  disabled={showSleepDaysStep && sleepDaysSelected.length === 0}
+                >
+                  <Text style={{ color: 'white', fontWeight: '800' }}>
+                    {showSleepDaysStep ? 'Next: Set Schedule' : 'Create & Apply'}
+                  </Text>
                 </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Time picker inside Sleep routine modal */}
+          {timePickerOpen && (
+            <View style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              justifyContent: 'center',
+              alignItems: 'center',
+              zIndex: 1000
+            }}>
+              <View style={[trackingStyles.modalCard, { maxWidth: 340, backgroundColor: '#ffffff' }]}> 
+                <Text style={[trackingStyles.modalTitle, { color: '#111827' }]}>Select time</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'center' }}>
+                  <View style={{ flex: 1 }}>
+                    <ScrollView 
+                      style={{ maxHeight: 160 }} 
+                      showsVerticalScrollIndicator={true}
+                      nestedScrollEnabled={true}
+                      scrollEnabled={true}
+                      contentContainerStyle={{ paddingVertical: 4 }}
+                    >
+                      {HOURS.map(h => (
+                        <TouchableOpacity key={h} onPress={() => setTempHour(h)} style={{ paddingVertical: 8, paddingHorizontal: 12, backgroundColor: tempHour===h?'#eef2ff':'#ffffff', borderRadius: 8, marginBottom: 4, borderWidth: tempHour===h ? 2 : 1, borderColor: tempHour===h ? '#7c3aed' : '#e5e7eb' }}>
+                          <Text style={{ color: '#111827', fontWeight: tempHour===h?'700':'500', textAlign: 'center' }}>{pad2(h)}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                  <Text style={{ color: '#111827', fontWeight: '800' }}>:</Text>
+                  <View style={{ flex: 1 }}>
+                    <ScrollView 
+                      style={{ maxHeight: 160 }} 
+                      showsVerticalScrollIndicator={true}
+                      nestedScrollEnabled={true}
+                      scrollEnabled={true}
+                      contentContainerStyle={{ paddingVertical: 4 }}
+                    >
+                      {MINUTES.map(m => (
+                        <TouchableOpacity key={m} onPress={() => setTempMinute(m)} style={{ paddingVertical: 8, paddingHorizontal: 12, backgroundColor: tempMinute===m?'#eef2ff':'#ffffff', borderRadius: 8, marginBottom: 4, borderWidth: tempMinute===m ? 2 : 1, borderColor: tempMinute===m ? '#7c3aed' : '#e5e7eb' }}>
+                          <Text style={{ color: '#111827', fontWeight: tempMinute===m?'700':'500', textAlign: 'center' }}>{pad2(m)}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </View>
+                <View style={trackingStyles.navigationContainer}>
+                  <TouchableOpacity onPress={() => { setTimePickerOpen(false); setTimePickerForNewRoutine(false); }} style={[trackingStyles.navButton, trackingStyles.navButtonDisabled]}>
+                    <Text style={trackingStyles.navButtonTextDisabled}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => {
+                    const hh = pad2(tempHour); const mm = pad2(tempMinute); const v = `${hh}:${mm}`;
+                    if (timePickerForNewRoutine) {
+                      if (timePickerTarget === 'bed') { setNewSleepBed(v); } else { setNewSleepWake(v); }
+                    } else {
+                      if (timePickerTarget === 'bed') { setSleepData(prev => ({ ...prev, bedTime: v })); } else { setSleepData(prev => ({ ...prev, wakeTime: v })); }
+                    }
+                    setTimePickerOpen(false);
+                    setTimePickerForNewRoutine(false);
+                  }} style={[trackingStyles.navButton, trackingStyles.navButtonPrimary]}>
+                    <Text style={trackingStyles.navButtonTextPrimary}>Confirm</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           )}
@@ -1698,8 +2404,8 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
 
     {/* Sport Routine Manager */}
     <Modal visible={sportRoutineModalOpen} transparent animationType="fade" onRequestClose={() => setSportRoutineModalOpen(false)}>
-      <View style={trackingStyles.modalOverlay}>
-        <View style={[trackingStyles.modalCard, { maxWidth: 420 }]}> 
+      <View style={trackingStyles.modalOverlay} pointerEvents="auto">
+        <View style={[trackingStyles.modalCard, { maxWidth: 420 }]} pointerEvents="auto"> 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={[trackingStyles.modalTitle, { color: '#111827' }]}>Sport Routines</Text>
             <TouchableOpacity onPress={() => setSportRoutineModalOpen(false)}><Ionicons name="close" size={20} color="#111827" /></TouchableOpacity>
@@ -1712,45 +2418,84 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
             </View>
           )}
 
-          {sportRoutines.map((r) => (
-            <View key={r.id} style={{ borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 12, padding: 12, marginTop: 12 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ color: '#111827', fontWeight: '700' }}>{r.name}</Text>
+          {!creatingSport && sportRoutines.map((r) => {
+            const assigned = Object.keys(sportRoutineNameByWeekday)
+              .map(n => Number(n))
+              .filter(d => sportRoutineNameByWeekday[d] === r.name);
+            const totalMinutes = Object.values(r.durations || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+            const hours = Math.round((totalMinutes / 60) * 10) / 10;
+            
+            return (
+              <View key={r.id} style={{ borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 12, padding: 16, marginTop: 12, backgroundColor: '#fafafa' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ color: '#111827', fontWeight: '700', fontSize: 16 }}>{r.name}</Text>
                 <TouchableOpacity onPress={async () => {
-                  const next = sportRoutines.filter(x => x.id !== r.id);
-                  setSportRoutines(next);
-                  if (user) await AsyncStorage.setItem(`sportRoutines:${user.id}`, JSON.stringify(next));
+                    Alert.alert(
+                      'Delete Routine',
+                      `Are you sure you want to delete "${r.name}"? This will remove it from all assigned days.`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Delete', 
+                          style: 'destructive',
+                          onPress: async () => {
+                            // Remove routine from ALL days (not just calculated assigned days)
+                            // Search all days that have this routine name and clear them
+                            const allDaysWithThisRoutine = Object.keys(sportRoutineNameByWeekday)
+                              .map(n => Number(n))
+                              .filter(d => sportRoutineNameByWeekday[d] === r.name);
+                            
+                            if (allDaysWithThisRoutine.length > 0) {
+                              await clearRoutineFromDays('sport', allDaysWithThisRoutine, r.name);
+                            }
+                            // Remove routine from saved routines
+                            const filtered = sportRoutines.filter(x => x.id !== r.id);
+                            // Rename remaining routines sequentially (Routine 1, Routine 2, etc.)
+                            const renumbered = filtered.map((routine, index) => ({
+                              ...routine,
+                              name: `Routine ${index + 1}`
+                            }));
+                            setSportRoutines(renumbered);
+                            if (user) await AsyncStorage.setItem(`sportRoutines:${user.id}`, JSON.stringify(renumbered));
+                            
+                            // Update routine names in day assignments
+                            const updatedNameMap = { ...sportRoutineNameByWeekday };
+                            Object.keys(updatedNameMap).forEach(dayKey => {
+                              const day = parseInt(dayKey);
+                              const oldName = updatedNameMap[day];
+                              const matchingRoutine = renumbered.find(routine => {
+                                const original = sportRoutines.find(orig => orig.name === oldName);
+                                return original && routine.id === original.id;
+                              });
+                              if (matchingRoutine) {
+                                updatedNameMap[day] = matchingRoutine.name;
+                              }
+                            });
+                            setSportRoutineNameByWeekday(updatedNameMap);
+                            if (user) await AsyncStorage.setItem(`sportRoutineNames:${user.id}`, JSON.stringify(updatedNameMap));
+                          }
+                        }
+                      ]
+                    );
                 }}>
-                  <Ionicons name="close" size={18} color="#ef4444" />
+                    <Ionicons name="trash-outline" size={20} color="#ef4444" />
                 </TouchableOpacity>
               </View>
-              <Text style={{ color: '#6b7280', marginTop: 4 }}>{(r.activities || []).join(', ') || 'No activities'}</Text>
-              <TouchableOpacity onPress={async () => {
-                const days = Array.from(new Set(sportDaysSelected)).sort();
-                if (days.length === 0) return;
-                const payload: SportRoutine = { activities: r.activities, durations: r.durations };
-                await applyRoutineToDays('sport', payload, days, r.name);
-                Alert.alert('Applied', `Applied to ${formatDaysList(sportDaysSelected)}`);
-              }} style={{ backgroundColor: '#111827', paddingVertical: 12, borderRadius: 12, marginTop: 10, alignItems: 'center' }}>
-                <Text style={{ color: 'white', fontWeight: '800' }}>Apply to {formatDaysList(sportDaysSelected)}</Text>
-              </TouchableOpacity>
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                <TouchableOpacity onPress={async () => {
-                  const days = Array.from(new Set(sportDaysSelected)).sort();
-                  if (days.length === 0) return;
-                  await clearRoutineFromDays('sport', days, r.name);
-                }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#f3f4f6' }}>
-                  <Text style={{ color: '#111827', fontWeight: '700' }}>Remove from selected days</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={async () => {
-                  const allDays = Object.keys(sportRoutineNameByWeekday).map(n => Number(n)).filter(d => sportRoutineNameByWeekday[d] === r.name);
-                  await clearRoutineFromDays('sport', allDays, r.name);
-                }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#fee2e2' }}>
-                  <Text style={{ color: '#9f1239', fontWeight: '700' }}>Clear all days</Text>
-                </TouchableOpacity>
+                <Text style={{ color: '#6b7280', fontSize: 14, marginBottom: 4 }}>
+                  {(r.activities || []).join(', ') || 'No activities'} ({hours}h)
+                </Text>
+                {assigned.length > 0 ? (
+                  <Text style={{ color: '#059669', fontSize: 14, fontWeight: '600' }}>
+                    Assigned to: {formatDaysList(assigned)}
+                  </Text>
+                ) : (
+                  <Text style={{ color: '#6b7280', fontSize: 14, fontStyle: 'italic' }}>
+                    Not assigned to any days
+                  </Text>
+                )}
               </View>
-            </View>
-          ))}
+            );
+          })}
 
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
             <TouchableOpacity onPress={() => clearAllAssignments('sport')} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#fee2e2' }}>
@@ -1758,64 +2503,243 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
             </TouchableOpacity>
           </View>
 
-          <Text style={{ color: '#111827', fontWeight: '800', marginTop: 18, marginBottom: 8 }}>Select days to apply routine:</Text>
+          {/* Days selection for applying routines - Only when creating AND selecting days */}
+          {showSportDaysStep && creatingSport && (
+            <>
+              <Text style={{ color: '#111827', fontWeight: '800', marginTop: 18, marginBottom: 8 }}>
+                1) Select days to assign routine:
+              </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {[0,1,2,3,4,5,6].map((d) => {
               const labels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
               const active = sportDaysSelected.includes(d);
+              const hasRoutine = !!sportRoutineByWeekday[d];
+              const routineName = sportRoutineNameByWeekday[d];
+              
               return (
-                <TouchableOpacity key={d} onPress={() => setSportDaysSelected(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, backgroundColor: active ? '#111827' : '#eef2f7' }}>
-                  <Text style={{ color: active ? '#ffffff' : '#6b7280', fontWeight: '700' }}>{labels[d]}</Text>
+                <TouchableOpacity 
+                  key={d} 
+                  onPress={() => setSportDaysSelected(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])} 
+                  style={{ 
+                    paddingHorizontal: 16, 
+                    paddingVertical: 10, 
+                    borderRadius: 12, 
+                    backgroundColor: active ? '#111827' : (hasRoutine ? '#eef2ff' : '#eef2f7'),
+                    borderWidth: hasRoutine ? 2 : 1,
+                    borderColor: hasRoutine ? '#10b981' : '#e5e7eb'
+                  }}
+                >
+                  <Text style={{ 
+                    color: active ? '#ffffff' : (hasRoutine ? '#10b981' : '#6b7280'), 
+                    fontWeight: '700',
+                    textAlign: 'center'
+                  }}>
+                    {labels[d]}
+                  </Text>
+                  {hasRoutine && !active && (
+                    <Text style={{ 
+                      color: '#10b981', 
+                      fontSize: 10, 
+                      textAlign: 'center', 
+                      marginTop: 2 
+                    }}>
+                      {routineName}
+                    </Text>
+                  )}
                 </TouchableOpacity>
               );
             })}
           </View>
+          
+          {/* Validation error */}
+          {(sportDaysSelected.length === 0 || newSportActivities.length === 0) && (
+            <View style={{ marginTop: 8 }}>
+              {sportDaysSelected.length === 0 && (
+                <Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '600' }}>
+                  * Please select days
+                </Text>
+              )}
+              {newSportActivities.length === 0 && (
+                <Text style={{ color: '#dc2626', fontSize: 14, fontWeight: '600' }}>
+                  * Please select activities
+                </Text>
+              )}
+            </View>
+          )}
+          
+          {/* Instructions */}
+          <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 8, fontStyle: 'italic' }}>
+            Days with green borders already have routines assigned. Select days to assign a new routine.
+          </Text>
+            </>
+          )}
 
           {!creatingSport ? (
-            <TouchableOpacity onPress={() => setCreatingSport(true)} style={{ marginTop: 18, backgroundColor: '#111827', paddingVertical: 14, borderRadius: 16, alignItems: 'center' }}>
+            <TouchableOpacity onPress={() => { 
+              // Check if all days are already covered by routines
+              const allDays = [0, 1, 2, 3, 4, 5, 6];
+              const coveredDays = allDays.filter(d => !!sportRoutineNameByWeekday[d]);
+              
+              if (coveredDays.length === 7) {
+                Alert.alert(
+                  'All Days Managed',
+                  'You already have routines for all days of the week. You can edit existing routines or delete some to create new ones.',
+                  [{ text: 'OK', style: 'default' }]
+                );
+                return;
+              }
+
+              setCreatingSport(true);
+              setShowSportDaysStep(true); // Start with days selection first
+              setShowSportActivitiesStep(false);
+              setShowSportDurationsStep(false);
+              setSportDaysSelected([]);
+              setNewSportActivities([]);
+              setNewSportDurations({});
+            }} style={{ marginTop: 18, backgroundColor: '#111827', paddingVertical: 14, borderRadius: 16, alignItems: 'center' }}>
               <Text style={{ color: 'white', fontWeight: '800' }}>+ Create New Routine</Text>
             </TouchableOpacity>
           ) : (
             <View style={{ marginTop: 16 }}>
-              <Text style={{ color: '#111827', fontWeight: '700' }}>Routine Name</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                {ROUTINE_NAME_PRESETS.map(n => { const active = newSportName === n; return (
-                  <TouchableOpacity key={n} onPress={() => setNewSportName(n)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: active ? '#111827' : '#eef2f7' }}>
-                    <Text style={{ color: active ? '#ffffff' : '#6b7280', fontWeight: '700' }}>{n}</Text>
-                  </TouchableOpacity>
-                );})}
-              </View>
+              {/* Step 2: Show activities selection */}
+              {showSportActivitiesStep && (
+                <>
+                  <Text style={{ color: '#111827', fontWeight: '800', marginBottom: 12 }}>2) Select Activities</Text>
+                  <MultiSelect label="Activities" options={sportActivities} value={newSportActivities} onChange={(vals) => { setNewSportActivities(vals); const map: Record<string, number> = {}; vals.forEach(v => { map[v] = newSportDurations[v] || 30; }); setNewSportDurations(map);} } allowOther category="sports" />
+                </>
+              )}
 
-              <MultiSelect label="Activities" options={sportActivities} value={newSportActivities} onChange={(vals) => { setNewSportActivities(vals); const map: Record<string, number> = {}; vals.forEach(v => { map[v] = newSportDurations[v] || 30; }); setNewSportDurations(map);} } allowOther category="sports" />
-              {newSportActivities.length > 0 && (
-                <View style={{ marginTop: 8 }}>
-                  {newSportActivities.map(a => (
-                    <View key={a} style={{ marginBottom: 8 }}>
-                      <Text style={trackingStyles.sportActivityLabel}>{a} minutes:</Text>
-                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-                        {DURATION_PRESETS.map(min => { const active = (newSportDurations[a] || 30) === min; return (
-                          <TouchableOpacity key={min} onPress={() => setNewSportDurations(prev => ({ ...prev, [a]: min }))} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: active ? '#111827' : '#eef2f7' }}>
-                            <Text style={{ color: active ? '#ffffff' : '#6b7280', fontWeight: '700' }}>{min}</Text>
+              {/* Step 3: Show durations selection */}
+              {showSportDurationsStep && newSportActivities.length > 0 && (
+                <>
+                  <Text style={{ color: '#111827', fontWeight: '800', marginBottom: 12 }}>3) Select Duration for Each Activity</Text>
+                  <View style={{ marginTop: 8 }}>
+                    {newSportActivities.map(a => (
+                      <View key={a} style={trackingStyles.sportActivityRow}>
+                        <View style={[trackingStyles.sportActivityLabel, { minWidth: 140 }]}>
+                          <Text style={trackingStyles.sportActivityLabelText}>{a}:</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flex: 1 }}>
+                          <TouchableOpacity 
+                            onPress={() => {
+                              // Logic to show duration picker for this activity
+                              // For now, cycle through common durations
+                              const durations = [15, 30, 45, 60, 75, 90, 120];
+                              const current = newSportDurations[a] || 30;
+                              const currentIndex = durations.indexOf(current);
+                              const nextIndex = (currentIndex + 1) % durations.length;
+                              setNewSportDurations(prev => ({ ...prev, [a]: durations[nextIndex] }));
+                            }}
+                            style={[trackingStyles.sportActivityInput, { justifyContent: 'center' }]}
+                          >
+                            <Text style={{ color: '#111827', fontSize: 16 }}>{newSportDurations[a] || 30} min</Text>
                           </TouchableOpacity>
-                        );})}
+                        </View>
                       </View>
-                    </View>
-                  ))}
-                </View>
+                    ))}
+                  </View>
+                </>
               )}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: 14 }}>
-                <TouchableOpacity onPress={() => { setCreatingSport(false); setNewSportName(''); setNewSportActivities([]); }} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => { 
+                  setCreatingSport(false); 
+                  setShowSportDaysStep(true); // Reset to first step
+                  setShowSportActivitiesStep(false);
+                  setShowSportDurationsStep(false);
+                  setSportDaysSelected([]);
+                  setNewSportActivities([]); 
+                  setNewSportDurations({}); 
+                }} style={{ flex: 1, backgroundColor: '#e5e7eb', paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}>
                   <Text style={{ color: '#111827', fontWeight: '700' }}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={async () => {
-                  const id = String(Date.now());
-                  const chosen = newSportName || ROUTINE_NAME_PRESETS.find(n => !sportRoutines.some(r => r.name === n)) || 'Routine 1';
-                  const next = [...sportRoutines, { id, name: chosen, activities: newSportActivities, durations: newSportDurations }];
-                  setSportRoutines(next);
-                  if (user) await AsyncStorage.setItem(`sportRoutines:${user.id}`, JSON.stringify(next));
-                  setCreatingSport(false); setNewSportName(''); setNewSportActivities([]); setNewSportDurations({});
-                }} style={{ flex: 1, backgroundColor: '#111827', paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}>
-                  <Text style={{ color: 'white', fontWeight: '800' }}>Create</Text>
+                <TouchableOpacity 
+                  onPress={async () => {
+                    if (showSportDaysStep) {
+                      // Step 1: Days selected, now go to activities selection
+                      setShowSportDaysStep(false);
+                      setShowSportActivitiesStep(true);
+                      return;
+                    }
+                    
+                    if (showSportActivitiesStep) {
+                      // Step 2: Activities selected, now go to durations selection
+                      setShowSportActivitiesStep(false);
+                      setShowSportDurationsStep(true);
+                      return;
+                    }
+                    
+                    // Step 3: Apply routine to selected days
+                    if (sportDaysSelected.length === 0 || newSportActivities.length === 0) {
+                      return; // Errors already shown in UI
+                    }
+
+                    const days = Array.from(new Set(sportDaysSelected)).sort();
+
+                    // Smart routine detection: check if a routine with same activities and durations already exists
+                    const existingRoutine = sportRoutines.find(r => {
+                      // Check if activities match
+                      const activitiesMatch = JSON.stringify(r.activities.sort()) === JSON.stringify(newSportActivities.sort());
+                      // Check if durations match
+                      const durationsMatch = JSON.stringify(r.durations) === JSON.stringify(newSportDurations);
+                      return activitiesMatch && durationsMatch;
+                    });
+                    
+                    if (existingRoutine) {
+                      // Automatically add days to existing routine
+                      const payload: SportRoutine = { activities: newSportActivities, durations: newSportDurations } as any;
+                      await applyRoutineToDays('sport', payload, days, existingRoutine.name);
+                      const activitiesList = newSportActivities.join(', ');
+                      Alert.alert('Success', `Days added to ${existingRoutine.name} (${activitiesList}): ${formatDaysList(days)}`);
+                      setCreatingSport(false);
+                      setShowSportDaysStep(true);
+                      setSportDaysSelected([]);
+                      setNewSportActivities([]);
+                      setNewSportDurations({});
+                      return;
+                    }
+
+                    // Create new routine if no similar one exists
+                    const id = String(Date.now());
+                    const sportRoutineName = generateNextRoutineName(sportRoutines.map(r => r.name));
+                    const next = [...sportRoutines, { id, name: sportRoutineName, activities: newSportActivities, durations: newSportDurations }];
+                    setSportRoutines(next);
+                    if (user) await AsyncStorage.setItem(`sportRoutines:${user.id}`, JSON.stringify(next));
+                    
+                  try {
+                      const payload: SportRoutine = { activities: newSportActivities, durations: newSportDurations } as any;
+                      await applyRoutineToDays('sport', payload, days, sportRoutineName);
+                      Alert.alert('Success', `Routine applied to ${formatDaysList(days)}`);
+                  } catch {}
+                    setCreatingSport(false); 
+                    setShowSportDaysStep(true); // Reset to first step
+                    setShowSportActivitiesStep(false);
+                    setShowSportDurationsStep(false);
+                    setSportDaysSelected([]);
+                    setNewSportActivities([]); 
+                    setNewSportDurations({});
+                  }} 
+                  style={{ 
+                    flex: 1, 
+                    backgroundColor: (
+                      (showSportDaysStep && sportDaysSelected.length === 0) ||
+                      (showSportActivitiesStep && newSportActivities.length === 0) ||
+                      (showSportDurationsStep && newSportActivities.length === 0)
+                    ) ? '#9ca3af' : '#111827', 
+                    paddingVertical: 12, 
+                    borderRadius: 12, 
+                    alignItems: 'center' 
+                  }}
+                  disabled={
+                    (showSportDaysStep && sportDaysSelected.length === 0) ||
+                    (showSportActivitiesStep && newSportActivities.length === 0) ||
+                    (showSportDurationsStep && newSportActivities.length === 0)
+                  }
+                >
+                  <Text style={{ color: 'white', fontWeight: '800' }}>
+                    {showSportDaysStep ? 'Next: Set Activities' : 
+                     showSportActivitiesStep ? 'Next: Set Duration' : 
+                     'Create & Apply'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1824,25 +2748,84 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
       </View>
     </Modal>
 
-    {/* Simple custom time picker */}
-    <Modal visible={timePickerOpen} transparent animationType="fade" onRequestClose={() => setTimePickerOpen(false)}>
-      <View style={trackingStyles.modalOverlay}>
-        <View style={[trackingStyles.modalCard, { maxWidth: 340 }]}> 
+    {/* Time picker for normal Sleep Tracking (not routines) */}
+    <Modal visible={timePickerOpen && !timePickerForNewRoutine} transparent animationType="fade" onRequestClose={() => setTimePickerOpen(false)}>
+      <View style={trackingStyles.modalOverlay} pointerEvents="auto">
+        <View style={[trackingStyles.modalCard, { maxWidth: 340 }]} pointerEvents="auto"> 
           <Text style={[trackingStyles.modalTitle, { color: '#111827' }]}>Select time</Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'center' }}>
-            <TextInput value={String(tempHour)} onChangeText={(t) => setTempHour(Math.max(0, Math.min(23, parseInt(t) || 0)))} keyboardType="numeric" style={[trackingStyles.sportActivityInput, { width: 80 }]} />
+            <View style={{ flex: 1 }}>
+              <ScrollView 
+                style={{ maxHeight: 160 }} 
+                showsVerticalScrollIndicator={true}
+                nestedScrollEnabled={true}
+                scrollEnabled={true}
+                contentContainerStyle={{ paddingVertical: 4 }}
+              >
+                {HOURS.map(h => (
+                  <TouchableOpacity key={h} onPress={() => setTempHour(h)} style={{ paddingVertical: 8, paddingHorizontal: 12, backgroundColor: tempHour===h?'#eef2ff':'#ffffff', borderRadius: 8, marginBottom: 4, borderWidth: tempHour===h ? 2 : 1, borderColor: tempHour===h ? '#7c3aed' : '#e5e7eb' }}>
+                    <Text style={{ color: '#111827', fontWeight: tempHour===h?'700':'500', textAlign: 'center' }}>{pad2(h)}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
             <Text style={{ color: '#111827', fontWeight: '800' }}>:</Text>
-            <TextInput value={String(tempMinute)} onChangeText={(t) => setTempMinute(Math.max(0, Math.min(59, parseInt(t) || 0)))} keyboardType="numeric" style={[trackingStyles.sportActivityInput, { width: 80 }]} />
+            <View style={{ flex: 1 }}>
+              <ScrollView 
+                style={{ maxHeight: 160 }} 
+                showsVerticalScrollIndicator={true}
+                nestedScrollEnabled={true}
+                scrollEnabled={true}
+                contentContainerStyle={{ paddingVertical: 4 }}
+              >
+                {MINUTES.map(m => (
+                  <TouchableOpacity key={m} onPress={() => setTempMinute(m)} style={{ paddingVertical: 8, paddingHorizontal: 12, backgroundColor: tempMinute===m?'#eef2ff':'#ffffff', borderRadius: 8, marginBottom: 4, borderWidth: tempMinute===m ? 2 : 1, borderColor: tempMinute===m ? '#7c3aed' : '#e5e7eb' }}>
+                    <Text style={{ color: '#111827', fontWeight: tempMinute===m?'700':'500', textAlign: 'center' }}>{pad2(m)}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
           </View>
           <View style={trackingStyles.navigationContainer}>
-            <TouchableOpacity onPress={() => setTimePickerOpen(false)} style={[trackingStyles.navButton, trackingStyles.navButtonDisabled]}>
+            <TouchableOpacity onPress={() => { setTimePickerOpen(false); setTimePickerForNewRoutine(false); }} style={[trackingStyles.navButton, trackingStyles.navButtonDisabled]}>
               <Text style={trackingStyles.navButtonTextDisabled}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => {
               const hh = pad2(tempHour); const mm = pad2(tempMinute); const v = `${hh}:${mm}`;
-              if (timePickerTarget === 'bed') setNewSleepBed(v); else setNewSleepWake(v);
+              if (timePickerTarget === 'bed') { setSleepData(prev => ({ ...prev, bedTime: v })); } else { setSleepData(prev => ({ ...prev, wakeTime: v })); }
               setTimePickerOpen(false);
+              setTimePickerForNewRoutine(false);
             }} style={[trackingStyles.navButton, trackingStyles.navButtonPrimary]}>
+              <Text style={trackingStyles.navButtonTextPrimary}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+
+    {/* Sleep quality picker */}
+    <Modal visible={sleepQualityPickerOpen} transparent animationType="fade" onRequestClose={() => setSleepQualityPickerOpen(false)}>
+      <View style={trackingStyles.modalOverlay} pointerEvents="auto">
+        <View style={[trackingStyles.modalCard, { maxWidth: 320 }]} pointerEvents="auto">
+          <Text style={[trackingStyles.modalTitle, { color: '#111827' }]}>Select sleep quality</Text>
+          <ScrollView 
+            style={{ maxHeight: 240, marginTop: 12 }} 
+            showsVerticalScrollIndicator={true}
+            nestedScrollEnabled={true}
+            scrollEnabled={true}
+            contentContainerStyle={{ paddingVertical: 4 }}
+          >
+            {[1,2,3,4,5,6,7,8,9,10].map(q => {
+              const active = sleepData.sleepQuality === q;
+              return (
+                <TouchableOpacity key={q} onPress={() => setSleepData(prev => ({ ...prev, sleepQuality: q }))} style={{ paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, marginBottom: 6, backgroundColor: active ? '#111827' : '#ffffff', borderWidth: 1, borderColor: active ? '#111827' : '#e5e7eb' }}>
+                  <Text style={{ color: active ? '#ffffff' : '#111827', fontWeight: '700', textAlign: 'center' }}>{q}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          <View style={trackingStyles.navigationContainer}>
+            <TouchableOpacity onPress={() => setSleepQualityPickerOpen(false)} style={[trackingStyles.navButton, trackingStyles.navButtonPrimary]}>
               <Text style={trackingStyles.navButtonTextPrimary}>Confirm</Text>
             </TouchableOpacity>
           </View>

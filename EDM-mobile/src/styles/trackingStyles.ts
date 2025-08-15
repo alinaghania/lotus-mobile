@@ -27,6 +27,7 @@ export const trackingStyles = StyleSheet.create({
   },
   padding: {
     padding: 16,
+    paddingBottom: 16,
   },
   header: {
     marginBottom: 24,
@@ -40,6 +41,7 @@ export const trackingStyles = StyleSheet.create({
   },
   content: {
     marginTop: 16,
+    paddingBottom: 16,
   },
 
   // Progress Card Styles
@@ -200,6 +202,8 @@ export const trackingStyles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
+    maxHeight: undefined,
+    width: '100%'
   },
   contentHeader: {
     flexDirection: 'row',
@@ -432,6 +436,7 @@ export const trackingStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flexWrap: 'wrap'
   },
   sportActivityLabel: {
     backgroundColor: '#f3f4f6',
@@ -451,6 +456,19 @@ export const trackingStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     fontSize: 16,
+  },
+  // Generic select box for modal pickers (large tappable area)
+  selectBox: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    backgroundColor: 'white',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   sportActivityCard: {
     backgroundColor: '#f9fafb',
