@@ -24,6 +24,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading: true
   });
 
+  // Firebase handles sync automatically - no manual sync needed
+
   useEffect(() => {
     loadUser();
   }, []);
@@ -44,6 +46,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const user = await authService.login(credentials);
       if (!user) throw new Error('Login failed');
       setState({ user, loading: false });
+      
+      // Firebase handles sync automatically
+      console.log('✅ User logged in, Firebase will sync automatically');
+      
       return user;
     } catch (error) {
       setState(prev => ({ ...prev, loading: false }));
@@ -56,6 +62,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const user = await authService.register(credentials);
       setState({ user, loading: false });
+      
+      // Firebase handles sync automatically for new users
+      console.log('✅ User registered, Firebase will sync automatically');
+      
       return user;
     } catch (error) {
       setState(prev => ({ ...prev, loading: false }));

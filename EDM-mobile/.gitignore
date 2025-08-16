@@ -1,14 +1,17 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# ==================== LOTUS EDM - GITIGNORE ====================
+# Health tracking app with Firebase backend
 
-# dependencies
+# ==================== DEPENDENCIES ====================
 node_modules/
+bower_components/
 
-# Expo
+# ==================== EXPO & REACT NATIVE ====================
 .expo/
 dist/
 web-build/
+.expo-shared/
 
-# Native
+# ==================== NATIVE BUILD FILES ====================
 .kotlin/
 *.orig.*
 *.jks
@@ -16,24 +19,82 @@ web-build/
 *.p12
 *.key
 *.mobileprovision
+android/app/build/
+ios/build/
+ios/Pods/
 
-# Metro
+# ==================== METRO & BUNDLER ====================
 .metro-health-check*
+metro-cache/
 
-# debug
+# ==================== DEBUG & LOGS ====================
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+*.log
+logs/
 
-# macOS
+# ==================== OPERATING SYSTEM ====================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 *.pem
 
-# local env files
+# ==================== ENVIRONMENT & SECRETS ====================
 .env
 .env*.local
+.env.production
+.env.development
+config/secrets.ts
+src/config/secrets.ts
 
-# typescript
+# ==================== FIREBASE ====================
+firebase-service-account.json
+google-services.json
+GoogleService-Info.plist
+.firebaserc
+firebase.json
+
+# ==================== DATABASE & CACHE ====================
+*.db
+*.sqlite
+*.sqlite3
+.cache/
+
+# ==================== TYPESCRIPT ====================
 *.tsbuildinfo
+dist/
+lib/
 
+# ==================== IDE & EDITORS ====================
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ==================== TESTING ====================
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# ==================== TEMPORARY FILES ====================
+tmp/
+temp/
+*.tmp
+*.temp
+
+# ==================== PACKAGES ====================
+*.tgz
+*.tar.gz
+
+# ==================== MISC ====================
 app-example
+.vercel
+.netlify

@@ -1551,9 +1551,9 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                 borderColor: routineFollowed ? '#c7d2fe' : '#f59e0b' 
               }
             ]}> 
-              <Text style={[trackingStyles.sportActivityTitle, { marginBottom: 8 }]}> 
+          <Text style={[trackingStyles.sportActivityTitle, { marginBottom: 8 }]}> 
                 {routineMessage}
-              </Text>
+          </Text>
               {hasRoutine && !routineFollowed && (
                 <Text style={{ color: '#92400e', fontSize: 14, marginBottom: 8, fontStyle: 'italic' }}>
                   Routine: {routine.bedTime} → {routine.wakeTime} • Actual: {sleepData.bedTime} → {sleepData.wakeTime}
@@ -1567,8 +1567,8 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                 <Text style={[trackingStyles.saveButtonText, { color: '#111827' }]}>
                   {hasRoutine && !routineFollowed ? 'Edit for this day' : 'Edit'}
                 </Text>
-              </TouchableOpacity>
-            </View>
+          </TouchableOpacity>
+        </View>
           );
         })()
       ) : (
@@ -1635,7 +1635,7 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                       <Text style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
                         Create routines to assign to these days
                       </Text>
-                    </View>
+                </View>
                   ) : (
                     <View style={{ 
                       backgroundColor: '#f0fdf4', 
@@ -1648,9 +1648,9 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                       <Text style={{ color: '#059669', fontSize: 14, fontWeight: '600' }}>
                         ✓ All days have routines assigned
                       </Text>
-                    </View>
-                  ); 
-                })()}
+              </View>
+            );
+          })()}
 
                 {/* Actions */}
                 <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
@@ -1663,7 +1663,7 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                     borderColor: '#fecaca'
                   }}>
                     <Text style={{ color: '#9f1239', fontWeight: '700', fontSize: 13 }}>Clear All Routines</Text>
-                  </TouchableOpacity>
+          </TouchableOpacity>
                 </View>
               </View>
             );
@@ -1753,9 +1753,9 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                         <Text style={trackingStyles.sportActivityLabelText}>Sleep quality (1-10):</Text>
                       </View>
                       <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flex: 1 }}>
-                        <TouchableOpacity onPress={() => setSleepQualityPickerOpen(true)} style={[trackingStyles.sportActivityInput, { justifyContent: 'center' }]}> 
-                          <Text style={{ color: '#111827', fontSize: 16 }}>{sleepData.sleepQuality ? String(sleepData.sleepQuality) : 'Select'}</Text>
-                        </TouchableOpacity>
+                      <TouchableOpacity onPress={() => setSleepQualityPickerOpen(true)} style={[trackingStyles.sportActivityInput, { justifyContent: 'center' }]}> 
+                        <Text style={{ color: '#111827', fontSize: 16 }}>{sleepData.sleepQuality ? String(sleepData.sleepQuality) : 'Select'}</Text>
+                      </TouchableOpacity>
                       </View>
                     </View>
                   </View>
@@ -1980,9 +1980,9 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
           )}
 
           {!creatingSleep && sleepRoutines.map((r) => {
-            const assigned = Object.keys(sleepRoutineNameByWeekday)
-              .map(n => Number(n))
-              .filter(d => sleepRoutineNameByWeekday[d] === r.name);
+                const assigned = Object.keys(sleepRoutineNameByWeekday)
+                  .map(n => Number(n))
+                  .filter(d => sleepRoutineNameByWeekday[d] === r.name);
             const bedTime = new Date(`2024-01-01 ${r.bedTime}`);
             let wakeTime = new Date(`2024-01-01 ${r.wakeTime}`);
             if (wakeTime < bedTime) {
@@ -1990,11 +1990,11 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
             }
             const hours = Math.round(((wakeTime.getTime() - bedTime.getTime()) / (1000 * 60 * 60)) * 10) / 10;
             
-            return (
+                return (
               <View key={r.id} style={{ borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 12, padding: 16, marginTop: 12, backgroundColor: '#fafafa' }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <Text style={{ color: '#111827', fontWeight: '700', fontSize: 16 }}>{r.name}</Text>
-                <TouchableOpacity onPress={async () => {
+              <TouchableOpacity onPress={async () => {
                     Alert.alert(
                       'Delete Routine',
                       `Are you sure you want to delete "${r.name}"? This will remove it from all assigned days.`,
@@ -2058,7 +2058,7 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                     Not assigned to any days
                   </Text>
                 )}
-              </View>
+            </View>
             );
           })}
 
@@ -2168,7 +2168,7 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                       setTimePickerOpen(true); 
                     }} style={[trackingStyles.sportActivityInput, { justifyContent: 'center' }]}> 
                       <Text style={{ color: '#111827', fontSize: 16 }}>{newSleepBed || 'Select'}</Text>
-                    </TouchableOpacity>
+              </TouchableOpacity>
                 </View>
                 </View>
                 <View style={trackingStyles.sportActivityRow}>
@@ -2185,7 +2185,7 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                       setTimePickerOpen(true); 
                     }} style={[trackingStyles.sportActivityInput, { justifyContent: 'center' }]}> 
                       <Text style={{ color: '#111827', fontSize: 16 }}>{newSleepWake || 'Select'}</Text>
-                    </TouchableOpacity>
+              </TouchableOpacity>
                 </View>
                 </View>
                 <View style={trackingStyles.sportActivityRow}>
@@ -2210,7 +2210,7 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                     </Text>
                   </View>
                 </View>
-              </View>
+                </View>
               )}
               {(() => {
                 // Show live conflicts for selected days
@@ -2267,7 +2267,19 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                     
                   try {
                       // Conflict detection: find days already assigned
-                      const conflicts = days.filter(d => !!sleepRoutineNameByWeekday[d]);
+                      // DEBUG: Log current state
+                      console.log('Checking conflicts:', { 
+                        days, 
+                        sleepRoutineNameByWeekday, 
+                        sleepRoutines: sleepRoutines.map(r => r.name) 
+                      });
+                      
+                      const conflicts = days.filter(d => {
+                        const routineName = sleepRoutineNameByWeekday[d];
+                        // Only consider it a conflict if the routine actually exists
+                        return routineName && sleepRoutines.some(r => r.name === routineName);
+                      });
+                      
                       if (conflicts.length > 0) {
                         const first = conflicts[0];
                         const assignedName = sleepRoutineNameByWeekday[first];
@@ -2601,7 +2613,7 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
               {showSportActivitiesStep && (
                 <>
                   <Text style={{ color: '#111827', fontWeight: '800', marginBottom: 12 }}>2) Select Activities</Text>
-                  <MultiSelect label="Activities" options={sportActivities} value={newSportActivities} onChange={(vals) => { setNewSportActivities(vals); const map: Record<string, number> = {}; vals.forEach(v => { map[v] = newSportDurations[v] || 30; }); setNewSportDurations(map);} } allowOther category="sports" />
+              <MultiSelect label="Activities" options={sportActivities} value={newSportActivities} onChange={(vals) => { setNewSportActivities(vals); const map: Record<string, number> = {}; vals.forEach(v => { map[v] = newSportDurations[v] || 30; }); setNewSportDurations(map);} } allowOther category="sports" />
                 </>
               )}
 
@@ -2609,8 +2621,8 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
               {showSportDurationsStep && newSportActivities.length > 0 && (
                 <>
                   <Text style={{ color: '#111827', fontWeight: '800', marginBottom: 12 }}>3) Select Duration for Each Activity</Text>
-                  <View style={{ marginTop: 8 }}>
-                    {newSportActivities.map(a => (
+                <View style={{ marginTop: 8 }}>
+                  {newSportActivities.map(a => (
                       <View key={a} style={trackingStyles.sportActivityRow}>
                         <View style={[trackingStyles.sportActivityLabel, { minWidth: 140 }]}>
                           <Text style={trackingStyles.sportActivityLabelText}>{a}:</Text>
@@ -2630,10 +2642,10 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                           >
                             <Text style={{ color: '#111827', fontSize: 16 }}>{newSportDurations[a] || 30} min</Text>
                           </TouchableOpacity>
-                        </View>
                       </View>
-                    ))}
-                  </View>
+                    </View>
+                  ))}
+                </View>
                 </>
               )}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: 14 }}>
@@ -2695,11 +2707,11 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
                     }
 
                     // Create new routine if no similar one exists
-                    const id = String(Date.now());
+                  const id = String(Date.now());
                     const sportRoutineName = generateNextRoutineName(sportRoutines.map(r => r.name));
-                    const next = [...sportRoutines, { id, name: sportRoutineName, activities: newSportActivities, durations: newSportDurations }];
-                    setSportRoutines(next);
-                    if (user) await AsyncStorage.setItem(`sportRoutines:${user.id}`, JSON.stringify(next));
+                  const next = [...sportRoutines, { id, name: sportRoutineName, activities: newSportActivities, durations: newSportDurations }];
+                  setSportRoutines(next);
+                  if (user) await AsyncStorage.setItem(`sportRoutines:${user.id}`, JSON.stringify(next));
                     
                   try {
                       const payload: SportRoutine = { activities: newSportActivities, durations: newSportDurations } as any;
@@ -2788,7 +2800,7 @@ export default function TrackingScreen({ route }: { route?: { params?: { initial
             </TouchableOpacity>
             <TouchableOpacity onPress={() => {
               const hh = pad2(tempHour); const mm = pad2(tempMinute); const v = `${hh}:${mm}`;
-              if (timePickerTarget === 'bed') { setSleepData(prev => ({ ...prev, bedTime: v })); } else { setSleepData(prev => ({ ...prev, wakeTime: v })); }
+                if (timePickerTarget === 'bed') { setSleepData(prev => ({ ...prev, bedTime: v })); } else { setSleepData(prev => ({ ...prev, wakeTime: v })); }
               setTimePickerOpen(false);
               setTimePickerForNewRoutine(false);
             }} style={[trackingStyles.navButton, trackingStyles.navButtonPrimary]}>

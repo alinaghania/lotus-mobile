@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, StyleSheet, Dimensions, Alert, TextInput, Modal } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, StyleSheet, Dimensions, Alert, TextInput, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import firebaseService from '../services/firebaseService';
+import { useAuth } from '../contexts/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -16,6 +19,7 @@ interface DigestivePhoto {
   likes: number;
   isLiked: boolean;
   comments: string[];
+  bloated?: boolean;
 }
 
 const digestiveStyles = StyleSheet.create({
@@ -61,7 +65,7 @@ const digestiveStyles = StyleSheet.create({
     borderRadius: 20,
   },
   viewButtonActive: {
-    backgroundColor: '#7c3aed', // Purple
+    backgroundColor: '#111827', // Black
   },
   viewButtonInactive: {
     backgroundColor: '#f3f4f6',
@@ -111,6 +115,9 @@ const digestiveStyles = StyleSheet.create({
   },
   gridTimeBadgeEvening: {
     backgroundColor: 'rgba(139, 92, 246, 0.8)', // Evening lighter purple
+  },
+  gridTimeBadgeBloated: {
+    backgroundColor: 'rgba(17, 24, 39, 0.8)', // Black for bloated
   },
   gridTimeBadgeText: {
     color: 'white',
@@ -302,8 +309,8 @@ const digestiveStyles = StyleSheet.create({
     marginHorizontal: 2,
   },
   timeOptionActive: {
-    backgroundColor: '#7c3aed',
-    shadowColor: '#7c3aed',
+    backgroundColor: '#111827',
+    shadowColor: '#111827',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
@@ -315,7 +322,9 @@ const digestiveStyles = StyleSheet.create({
     fontWeight: '600',
   },
   timeOptionTextActive: {
-    color: 'white',
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 14,
   },
   
   // Comments and Likes
@@ -336,7 +345,7 @@ const digestiveStyles = StyleSheet.create({
     backgroundColor: '#f3f4f6',
   },
   interactionButtonActive: {
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#111827',
   },
   interactionText: {
     marginLeft: 6,
@@ -350,14 +359,14 @@ const digestiveStyles = StyleSheet.create({
   
   // Save button improvements
   saveButton: {
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#111827',
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 20,
     marginHorizontal: 16,
     marginVertical: 16,
     alignItems: 'center',
-    shadowColor: '#7c3aed',
+    shadowColor: '#111827',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -402,6 +411,8 @@ const digestiveStyles = StyleSheet.create({
     height: 120,
     textAlignVertical: 'top',
     marginBottom: 20,
+    backgroundColor: '#ffffff',
+    color: '#111827',
   },
   commentModalActions: {
     flexDirection: 'row',
@@ -425,7 +436,7 @@ const digestiveStyles = StyleSheet.create({
     flex: 1,
     padding: 16,
     borderRadius: 12,
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#111827',
     alignItems: 'center',
   },
   commentPostText: {
@@ -433,35 +444,195 @@ const digestiveStyles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
+  bloatedOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    marginVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#f9fafb',
+  },
+  bloatedOptionActive: {
+    backgroundColor: '#f3f4f6',
+  },
+  bloatedOptionText: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  bloatedOptionTextActive: {
+    color: '#111827',
+    fontWeight: '600',
+  },
+  commentsContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  commentItem: {
+    marginBottom: 4,
+  },
+  commentText: {
+    color: '#6b7280',
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  gridDateOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  gridDateText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalCloseArea: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalContent: {
+    width: '90%',
+    height: '80%',
+  },
+  zoomedImage: {
+    width: '100%',
+    height: '100%',
+  },
 });
 
 const DIGESTIVE_PHOTOS_KEY = 'digestive_photos';
 
 export default function DigestiveScreen() {
+  const { user } = useAuth();
   const [photos, setPhotos] = useState<DigestivePhoto[]>([]);
   const [selectedTime, setSelectedTime] = useState<'morning' | 'evening'>('morning');
   const [viewMode, setViewMode] = useState<'grid' | 'feed'>('grid');
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [selectedPhotoId, setSelectedPhotoId] = useState<string>('');
   const [commentText, setCommentText] = useState('');
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [isBloated, setIsBloated] = useState(false);
+  const [pendingPhotoUri, setPendingPhotoUri] = useState<string>('');
+  const [selectedImageUri, setSelectedImageUri] = useState<string>('');
+  const [showImageModal, setShowImageModal] = useState(false);
 
   // Load photos on component mount
   useEffect(() => {
     loadPhotos();
   }, []);
 
-  const loadPhotos = async () => {
+  // Helper function to copy image to permanent location and convert to base64
+  const saveImagePermanently = async (uri: string): Promise<{ permanentUri: string; base64Data: string }> => {
     try {
-      const savedPhotos = await AsyncStorage.getItem(DIGESTIVE_PHOTOS_KEY);
-      if (savedPhotos) {
-        const parsedPhotos = JSON.parse(savedPhotos);
-        // Convert timestamp strings back to Date objects
-        const photosWithDates = parsedPhotos.map((photo: any) => ({
-          ...photo,
-          timestamp: new Date(photo.timestamp)
-        }));
-        setPhotos(photosWithDates);
+      // Create a unique filename
+      const timestamp = Date.now();
+      const filename = `digestive_photo_${timestamp}.jpg`;
+      
+      // Get the document directory path
+      const documentDir = FileSystem.documentDirectory;
+      if (!documentDir) {
+        throw new Error('Document directory not available');
       }
+      
+      // Create digestive photos directory if it doesn't exist
+      const digestiveDir = `${documentDir}digestive_photos/`;
+      const dirInfo = await FileSystem.getInfoAsync(digestiveDir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(digestiveDir, { intermediates: true });
+      }
+      
+      // Copy the image to the permanent location
+      const permanentUri = `${digestiveDir}${filename}`;
+      await FileSystem.copyAsync({
+        from: uri,
+        to: permanentUri
+      });
+      
+      // Convert to base64 for MongoDB storage
+      const base64Data = await FileSystem.readAsStringAsync(permanentUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      
+      return { permanentUri, base64Data };
+    } catch (error) {
+      console.error('Error saving image permanently:', error);
+      throw error;
+    }
+  };
+
+  const loadPhotos = async () => {
+    if (!user) return;
+
+    try {
+      // Try to load from MongoDB first
+      let loadedPhotos: DigestivePhoto[] = [];
+      
+      try {
+        const firebasePhotos = await firebaseService.getUserPhotos(user.id);
+        loadedPhotos = firebasePhotos.map(firebasePhoto => ({
+          id: firebasePhoto.photoId,
+          uri: firebasePhoto.downloadURL,
+          time: firebasePhoto.time,
+          timestamp: new Date(firebasePhoto.timestamp),
+          notes: firebasePhoto.notes,
+          likes: firebasePhoto.likes,
+          isLiked: firebasePhoto.isLiked,
+          comments: firebasePhoto.comments,
+          bloated: firebasePhoto.bloated
+        }));
+        console.log(`✅ Loaded ${loadedPhotos.length} photos from Firebase`);
+      } catch (firebaseError) {
+        console.error('❌ Error loading from Firebase, using local storage:', firebaseError);
+        
+        // Fallback to AsyncStorage
+        const savedPhotos = await AsyncStorage.getItem(DIGESTIVE_PHOTOS_KEY);
+        if (savedPhotos) {
+          const parsedPhotos = JSON.parse(savedPhotos);
+          const photosWithDates = [];
+          
+          for (const photo of parsedPhotos) {
+            // Check if the image file still exists
+            try {
+              const fileInfo = await FileSystem.getInfoAsync(photo.uri);
+              if (fileInfo.exists) {
+                photosWithDates.push({
+                  ...photo,
+                  timestamp: new Date(photo.timestamp)
+                });
+              } else {
+                console.warn(`Image file not found: ${photo.uri}`);
+              }
+            } catch (fileError) {
+              console.warn(`Error checking file: ${photo.uri}`, fileError);
+            }
+          }
+          
+          loadedPhotos = photosWithDates;
+          
+          // If some photos were removed, update AsyncStorage
+          if (photosWithDates.length !== parsedPhotos.length) {
+            await AsyncStorage.setItem(DIGESTIVE_PHOTOS_KEY, JSON.stringify(photosWithDates));
+          }
+        }
+      }
+      
+      setPhotos(loadedPhotos);
     } catch (error) {
       console.error('Error loading photos:', error);
     }
@@ -492,17 +663,11 @@ export default function DigestiveScreen() {
     });
 
     if (!result.canceled && result.assets[0]) {
-      const newPhoto: DigestivePhoto = {
-        id: Date.now().toString(),
-        uri: result.assets[0].uri,
-        time: selectedTime,
-        timestamp: new Date(),
-        notes: `${selectedTime.charAt(0).toUpperCase() + selectedTime.slice(1)} belly check`,
-        likes: 0,
-        isLiked: false,
-        comments: []
-      };
-      setPhotos(prev => [newPhoto, ...prev]);
+      // Store the photo URI and open note modal
+      setPendingPhotoUri(result.assets[0].uri);
+      setNoteText('');
+      setIsBloated(false);
+      setShowNoteModal(true);
     }
   };
 
@@ -521,22 +686,109 @@ export default function DigestiveScreen() {
     });
 
     if (!result.canceled && result.assets[0]) {
-      const newPhoto: DigestivePhoto = {
-        id: Date.now().toString(),
-        uri: result.assets[0].uri,
-        time: selectedTime,
-        timestamp: new Date(),
-        notes: `${selectedTime.charAt(0).toUpperCase() + selectedTime.slice(1)} belly check`,
-        likes: 0,
-        isLiked: false,
-        comments: []
-      };
-      setPhotos(prev => [newPhoto, ...prev]);
+      // Store the photo URI and open note modal
+      setPendingPhotoUri(result.assets[0].uri);
+      setNoteText('');
+      setIsBloated(false);
+      setShowNoteModal(true);
     }
   };
 
-  const deletePhoto = (photoId: string) => {
-    setPhotos(prev => prev.filter(photo => photo.id !== photoId));
+  const savePhotoWithNote = async () => {
+    if (pendingPhotoUri && user) {
+      try {
+        // Save image permanently and get base64
+        const { permanentUri, base64Data } = await saveImagePermanently(pendingPhotoUri);
+        
+        const photoId = Date.now().toString();
+        const newPhoto: DigestivePhoto = {
+          id: photoId,
+          uri: permanentUri,
+          time: selectedTime,
+          timestamp: new Date(),
+          notes: noteText || `${selectedTime.charAt(0).toUpperCase() + selectedTime.slice(1)} belly check`,
+          likes: 0,
+          isLiked: false,
+          comments: [],
+          bloated: isBloated
+        };
+        
+        // Save to Firebase
+        try {
+          await firebaseService.savePhoto({
+            userId: user.id,
+            photoId,
+            time: selectedTime,
+            timestamp: new Date(),
+            notes: noteText || `${selectedTime.charAt(0).toUpperCase() + selectedTime.slice(1)} belly check`,
+            likes: 0,
+            isLiked: false,
+            comments: [],
+            bloated: isBloated
+          }, permanentUri);
+          console.log('✅ Photo saved to Firebase successfully');
+        } catch (firebaseError) {
+          console.error('❌ Error saving photo to Firebase:', firebaseError);
+        }
+        
+        setPhotos(prev => [newPhoto, ...prev]);
+        
+        // Auto-save photos to AsyncStorage as backup
+        const updatedPhotos = [newPhoto, ...photos];
+        await AsyncStorage.setItem(DIGESTIVE_PHOTOS_KEY, JSON.stringify(updatedPhotos));
+        
+        // Reset states
+        setPendingPhotoUri('');
+        setNoteText('');
+        setIsBloated(false);
+        setShowNoteModal(false);
+      } catch (error) {
+        console.error('Error saving photo:', error);
+        Alert.alert('Error', 'Failed to save photo. Please try again.');
+      }
+    }
+  };
+
+  const deletePhoto = async (photoId: string) => {
+    if (!user) return;
+
+    try {
+      // Find the photo to get its URI
+      const photoToDelete = photos.find(photo => photo.id === photoId);
+      if (photoToDelete) {
+        // Delete from Firebase
+        try {
+          await firebaseService.deletePhoto(photoId, user.id);
+          console.log('✅ Photo deleted from Firebase');
+        } catch (firebaseError) {
+          console.error('❌ Error deleting from Firebase:', firebaseError);
+        }
+
+        // Try to delete the physical file
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(photoToDelete.uri);
+          if (fileInfo.exists) {
+            await FileSystem.deleteAsync(photoToDelete.uri);
+          }
+        } catch (fileError) {
+          console.warn('Error deleting file:', fileError);
+        }
+      }
+      
+      // Remove photo from state
+      const updatedPhotos = photos.filter(photo => photo.id !== photoId);
+      setPhotos(updatedPhotos);
+      
+      // Update AsyncStorage
+      await AsyncStorage.setItem(DIGESTIVE_PHOTOS_KEY, JSON.stringify(updatedPhotos));
+    } catch (error) {
+      console.error('Error deleting photo:', error);
+    }
+  };
+
+  const openImageModal = (imageUri: string) => {
+    setSelectedImageUri(imageUri);
+    setShowImageModal(true);
   };
 
   const toggleLike = (photoId: string) => {
@@ -574,26 +826,11 @@ export default function DigestiveScreen() {
   };
 
   const formatDate = (date: Date) => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today';
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
-    } else {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
     <SafeAreaView style={[digestiveStyles.container, { backgroundColor: '#fff' }]}>
-      {/* Header */}
-      <View style={digestiveStyles.header}>
-        <Text style={digestiveStyles.headerTitle}>Digestive Tracker</Text>
-      </View>
-
       {/* Time Selector */}
       <View style={digestiveStyles.timeSelector}>
         {(['morning', 'evening'] as const).map((time) => (
@@ -607,7 +844,7 @@ export default function DigestiveScreen() {
           >
             <Text style={[
               digestiveStyles.timeOptionText,
-              selectedTime === time && digestiveStyles.timeOptionTextActive
+              selectedTime === time ? digestiveStyles.timeOptionTextActive : null
             ]}>
               {time === 'morning' ? 'Morning' : 'Evening'}
             </Text>
@@ -615,13 +852,13 @@ export default function DigestiveScreen() {
         ))}
       </View>
 
-      {/* Upload Section */}
+      {/* Upload Section - Fixed position */}
       <View style={digestiveStyles.uploadSection}>
         <TouchableOpacity style={digestiveStyles.cameraButton} onPress={takePicture}>
-          <Ionicons name="camera" size={32} color="white" />
+          <Ionicons name="camera" size={24} color="white" />
         </TouchableOpacity>
         <TouchableOpacity style={digestiveStyles.galleryButton} onPress={selectFromLibrary}>
-          <Ionicons name="image" size={32} color="white" />
+          <Ionicons name="image" size={24} color="white" />
         </TouchableOpacity>
       </View>
 
@@ -663,9 +900,12 @@ export default function DigestiveScreen() {
         {viewMode === 'grid' ? (
           /* Grid View */
           <View style={digestiveStyles.gridContainer}>
-            {photos.map((photo) => (
+            {photos.filter(photo => photo.time === selectedTime).map((photo) => (
               <View key={photo.id} style={digestiveStyles.gridItem}>
-                <View style={digestiveStyles.gridPhotoContainer}>
+                <TouchableOpacity 
+                  style={digestiveStyles.gridPhotoContainer}
+                  onPress={() => openImageModal(photo.uri)}
+                >
                   <Image 
                     source={{ uri: photo.uri }} 
                     style={digestiveStyles.gridPhoto}
@@ -673,7 +913,11 @@ export default function DigestiveScreen() {
                   />
                   <View style={[
                     digestiveStyles.gridTimeBadge,
-                    photo.time === 'morning' ? digestiveStyles.gridTimeBadgeMorning : digestiveStyles.gridTimeBadgeEvening
+                    photo.bloated 
+                      ? digestiveStyles.gridTimeBadgeBloated
+                      : photo.time === 'morning' 
+                        ? digestiveStyles.gridTimeBadgeMorning 
+                        : digestiveStyles.gridTimeBadgeEvening
                   ]}>
                     <Text style={digestiveStyles.gridTimeBadgeText}>
                       {photo.time === 'morning' ? 'AM' : 'PM'}
@@ -685,14 +929,21 @@ export default function DigestiveScreen() {
                   >
                     <Ionicons name="close-circle" size={16} color="rgba(239, 68, 68, 0.9)" />
                   </TouchableOpacity>
-                </View>
+                  
+                  {/* Date overlay at bottom */}
+                  <View style={digestiveStyles.gridDateOverlay}>
+                    <Text style={digestiveStyles.gridDateText}>
+                      {formatDate(photo.timestamp)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
               </View>
             ))}
-            {photos.length === 0 && (
+            {photos.filter(photo => photo.time === selectedTime).length === 0 && (
               <View style={[digestiveStyles.photoPlaceholder, { width: '100%', height: 200 }]}>
                 <Ionicons name="camera-outline" size={48} color="#6b7280" />
                 <Text style={digestiveStyles.placeholderText}>
-                  No photos yet{'\n'}Start tracking your digestive health!
+                  No {selectedTime} photos yet{'\n'}Start tracking your digestive health!
                 </Text>
               </View>
             )}
@@ -700,7 +951,7 @@ export default function DigestiveScreen() {
         ) : (
           /* Feed View */
           <View style={digestiveStyles.feedContainer}>
-            {photos.map((photo) => (
+            {photos.filter(photo => photo.time === selectedTime).map((photo) => (
               <View key={photo.id} style={digestiveStyles.postCard}>
                 {/* Post Header */}
                 <View style={digestiveStyles.postHeader}>
@@ -723,10 +974,17 @@ export default function DigestiveScreen() {
 
                 {/* Photo */}
                 <View style={digestiveStyles.photoContainer}>
-                  <Image source={{ uri: photo.uri }} style={digestiveStyles.photo} />
+                  <TouchableOpacity onPress={() => openImageModal(photo.uri)}>
+                    <Image source={{ uri: photo.uri }} style={digestiveStyles.photo} />
+                  </TouchableOpacity>
                   <View style={[
                     digestiveStyles.timeBadge,
-                    { backgroundColor: photo.time === 'morning' ? 'rgba(59, 130, 246, 0.8)' : 'rgba(139, 69, 19, 0.8)' }
+                    { backgroundColor: photo.bloated 
+                        ? 'rgba(17, 24, 39, 0.8)' 
+                        : photo.time === 'morning' 
+                          ? 'rgba(59, 130, 246, 0.8)' 
+                          : 'rgba(139, 69, 19, 0.8)' 
+                    }
                   ]}>
                     <Text style={digestiveStyles.timeBadgeText}>
                       {photo.time === 'morning' ? 'Morning' : 'Evening'}
@@ -774,14 +1032,28 @@ export default function DigestiveScreen() {
                     {photo.notes}
                   </Text>
                 </View>
+
+                {/* Comments */}
+                {photo.comments.length > 0 && (
+                  <View style={digestiveStyles.commentsContainer}>
+                    {photo.comments.map((comment, index) => (
+                      <View key={index} style={digestiveStyles.commentItem}>
+                        <Text style={digestiveStyles.commentText}>
+                          <Text style={{ fontWeight: '600' }}>You </Text>
+                          {comment}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </View>
             ))}
 
-            {photos.length === 0 && (
+            {photos.filter(photo => photo.time === selectedTime).length === 0 && (
               <View style={digestiveStyles.photoPlaceholder}>
                 <Ionicons name="camera-outline" size={48} color="#6b7280" />
                 <Text style={digestiveStyles.placeholderText}>
-                  No photos yet{'\n'}Start tracking your digestive health!
+                  No {selectedTime} photos yet{'\n'}Start tracking your digestive health!
                 </Text>
               </View>
             )}
@@ -796,6 +1068,89 @@ export default function DigestiveScreen() {
         )}
       </ScrollView>
 
+      {/* Note Modal */}
+      <Modal
+        visible={showNoteModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowNoteModal(false)}
+      >
+        <KeyboardAvoidingView 
+          style={{ flex: 1 }} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={digestiveStyles.commentModalOverlay}>
+            <View style={digestiveStyles.commentModalContent}>
+            <View style={digestiveStyles.commentModalHeader}>
+              <Text style={digestiveStyles.commentModalTitle}>Add Note</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowNoteModal(false);
+                  setNoteText('');
+                  setIsBloated(false);
+                  setPendingPhotoUri('');
+                }}
+              >
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+            
+            <TextInput
+              style={digestiveStyles.commentInput}
+              value={noteText}
+              onChangeText={setNoteText}
+              placeholder="Add a note about your digestive state..."
+              multiline
+              numberOfLines={3}
+              autoFocus
+            />
+            
+            {/* Bloated option */}
+            <TouchableOpacity
+              style={[
+                digestiveStyles.bloatedOption,
+                isBloated && digestiveStyles.bloatedOptionActive
+              ]}
+              onPress={() => setIsBloated(!isBloated)}
+            >
+              <Ionicons 
+                name={isBloated ? "checkbox" : "square-outline"} 
+                size={20} 
+                color={isBloated ? "#111827" : "#6b7280"} 
+              />
+              <Text style={[
+                digestiveStyles.bloatedOptionText,
+                isBloated && digestiveStyles.bloatedOptionTextActive
+              ]}>
+                Feeling bloated
+              </Text>
+            </TouchableOpacity>
+            
+            <View style={digestiveStyles.commentModalActions}>
+              <TouchableOpacity
+                style={digestiveStyles.commentCancelButton}
+                onPress={() => {
+                  setShowNoteModal(false);
+                  setNoteText('');
+                  setIsBloated(false);
+                  setPendingPhotoUri('');
+                }}
+              >
+                <Text style={digestiveStyles.commentCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={digestiveStyles.commentPostButton}
+                onPress={savePhotoWithNote}
+              >
+                <Text style={digestiveStyles.commentPostText}>Save Photo</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* Comment Modal */}
       <Modal
         visible={showCommentModal}
@@ -803,9 +1158,13 @@ export default function DigestiveScreen() {
         transparent={true}
         onRequestClose={() => setShowCommentModal(false)}
       >
-        <View style={digestiveStyles.commentModalOverlay}>
-          <View style={digestiveStyles.commentModalContent}>
-            <View style={digestiveStyles.commentModalHeader}>
+        <KeyboardAvoidingView 
+          style={{ flex: 1 }} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={digestiveStyles.commentModalOverlay}>
+            <View style={digestiveStyles.commentModalContent}>
+              <View style={digestiveStyles.commentModalHeader}>
               <Text style={digestiveStyles.commentModalTitle}>Add Comment</Text>
               <TouchableOpacity
                 onPress={() => {
@@ -849,6 +1208,30 @@ export default function DigestiveScreen() {
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Image Zoom Modal */}
+      <Modal
+        visible={showImageModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowImageModal(false)}
+      >
+        <View style={digestiveStyles.imageModalOverlay}>
+          <TouchableOpacity 
+            style={digestiveStyles.imageModalCloseArea}
+            onPress={() => setShowImageModal(false)}
+          >
+            <View style={digestiveStyles.imageModalContent}>
+              <Image 
+                source={{ uri: selectedImageUri }} 
+                style={digestiveStyles.zoomedImage}
+                resizeMode="contain"
+              />
+            </View>
+          </TouchableOpacity>
         </View>
       </Modal>
     </SafeAreaView>

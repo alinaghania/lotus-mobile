@@ -38,6 +38,7 @@
     "expo-status-bar": "~2.2.3",
     "expo-system-ui": "~5.0.10",
     "expo-web-browser": "~14.2.0",
+    "firebase": "^12.1.0",
     "i18next": "^23.11.5",
     "memoize-one": "^5.2.1",
     "nativewind": "^4.1.23",

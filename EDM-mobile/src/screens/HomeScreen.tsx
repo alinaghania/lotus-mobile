@@ -27,7 +27,6 @@ const loadSavedCharacter = async (): Promise<Character> => {
     const characterData = await AsyncStorage.getItem('savedCharacter');
     if (characterData) {
       const savedCharacter = JSON.parse(characterData);
-      console.log('Loaded character from storage:', savedCharacter);
       // Ensure all required properties exist (backwards compatibility + AVATAAARS support)
       return {
         ...savedCharacter,

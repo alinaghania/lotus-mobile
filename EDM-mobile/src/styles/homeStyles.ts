@@ -124,11 +124,11 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
   customizeButtonGlamour: {
-    backgroundColor: '#7c3aed',
+    backgroundColor: '#111827',
     paddingVertical: 14,
     paddingHorizontal: 32,
     borderRadius: 20,
-    shadowColor: '#7c3aed',
+    shadowColor: '#111827',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,

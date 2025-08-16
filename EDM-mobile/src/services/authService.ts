@@ -1,127 +1,291 @@
-import * as Crypto from 'expo-crypto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  updateProfile,
+  updateEmail,
+  sendPasswordResetEmail,
+  onAuthStateChanged,
+  User as FirebaseUser
+} from 'firebase/auth';
+import { auth } from '../config/firebase';
 import { LoginCredentials, RegisterCredentials, User } from '../types/auth';
+import firebaseService from './firebaseService';
 
 class AuthService {
-  private async hashPassword(password: string): Promise<string> {
-    // Generate a random salt
-    const salt = await Crypto.getRandomBytesAsync(16);
-    // Convert salt to base64
-    const saltBase64 = btoa(String.fromCharCode(...new Uint8Array(salt)));
-    // Hash the password with the salt
-    const hash = await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      password + saltBase64
-    );
-    return `${saltBase64}:${hash}`;
-  }
-
-  private async verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
-    const [saltBase64, storedHash] = hashedPassword.split(':');
-    const hash = await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      password + saltBase64
-    );
-    return hash === storedHash;
-  }
-
   async register(credentials: RegisterCredentials): Promise<User> {
     try {
-      // Check if user already exists
-      const users = await AsyncStorage.getAllKeys();
-      const existingUser = await Promise.all(
-        users
-          .filter(key => key.startsWith('user_'))
-          .map(async key => JSON.parse(await AsyncStorage.getItem(key) || '{}'))
-      ).then(users => users.find(user => user.email === credentials.email));
+      // 1. Créer l'utilisateur avec Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        credentials.email,
+        credentials.password
+      );
 
-      if (existingUser) {
-        throw new Error('User already exists');
+      if (!userCredential.user) {
+        throw new Error('Failed to create user');
       }
 
-      const hashedPassword = await this.hashPassword(credentials.password);
+      const firebaseUser = userCredential.user;
+      const userId = firebaseUser.uid;
+
+      // 2. Mettre à jour le profil Firebase
+      await updateProfile(firebaseUser, {
+        displayName: credentials.name
+      });
+
+      // 3. Créer le document utilisateur dans Firestore
+      await firebaseService.createUser({
+        userId,
+        email: credentials.email,
+        username: credentials.name,
+        createdAt: new Date()
+      });
+
+      // 4. Créer l'objet User local
       const user: User = {
-        id: Date.now().toString(),
+        id: userId,
         email: credentials.email,
         name: credentials.name,
-        hashedPassword
+        hashedPassword: '' // Pas nécessaire avec Firebase Auth
       };
-      
-      await AsyncStorage.setItem(`user_${user.id}`, JSON.stringify(user));
-      await AsyncStorage.setItem('currentUser', user.id);
+
+      // 5. Sauvegarder localement pour la session
+      await AsyncStorage.setItem('currentUser', userId);
+      await AsyncStorage.setItem(`user_${userId}`, JSON.stringify(user));
+
+      console.log('✅ User registered successfully with Firebase:', user.email);
       return user;
-    } catch (error) {
-      console.error('Registration error:', error);
+    } catch (error: any) {
+      console.error('❌ Registration error:', error);
+      
+      // Messages d'erreur Firebase plus friendlies
+      if (error.code === 'auth/email-already-in-use') {
+        throw new Error('Un compte existe déjà avec cette adresse email');
+      } else if (error.code === 'auth/weak-password') {
+        throw new Error('Le mot de passe doit contenir au moins 6 caractères');
+      } else if (error.code === 'auth/invalid-email') {
+        throw new Error('Adresse email invalide');
+      }
+      
       throw error;
     }
   }
 
   async login(credentials: LoginCredentials): Promise<User | null> {
     try {
-      const users = await AsyncStorage.getAllKeys();
-      for (const key of users) {
-        if (key.startsWith('user_')) {
-          const user = JSON.parse(await AsyncStorage.getItem(key) || '{}');
-          if (user.email === credentials.email) {
-            const isValid = await this.verifyPassword(credentials.password, user.hashedPassword);
-            if (isValid) {
-              await AsyncStorage.setItem('currentUser', user.id);
-              return user;
-            }
-          }
-        }
+      // 1. Connexion avec Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        credentials.email,
+        credentials.password
+      );
+
+      if (!userCredential.user) {
+        throw new Error('Login failed');
       }
-      throw new Error('Invalid email or password');
-    } catch (error) {
-      console.error('Login error:', error);
+
+      const firebaseUser = userCredential.user;
+      const userId = firebaseUser.uid;
+
+      // 2. Récupérer les données utilisateur depuis Firestore
+      const userData = await firebaseService.getUserById(userId);
+      
+      if (!userData) {
+        // Si pas de données Firestore, créer le document avec les infos Firebase
+        await firebaseService.createUser({
+          userId,
+          email: firebaseUser.email || credentials.email,
+          username: firebaseUser.displayName || 'User',
+          createdAt: new Date()
+        });
+      }
+
+      // 3. Créer l'objet User local
+      const user: User = {
+        id: userId,
+        email: firebaseUser.email || credentials.email,
+        name: firebaseUser.displayName || userData?.username || 'User',
+        hashedPassword: '' // Pas nécessaire avec Firebase Auth
+      };
+
+      // 4. Sauvegarder localement pour la session
+      await AsyncStorage.setItem('currentUser', userId);
+      await AsyncStorage.setItem(`user_${userId}`, JSON.stringify(user));
+
+      console.log('✅ User logged in successfully with Firebase:', user.email);
+      return user;
+    } catch (error: any) {
+      console.error('❌ Login error:', error);
+      
+      // Messages d'erreur Firebase plus friendlies
+      if (error.code === 'auth/user-not-found') {
+        throw new Error('Aucun compte trouvé avec cette adresse email');
+      } else if (error.code === 'auth/wrong-password') {
+        throw new Error('Mot de passe incorrect');
+      } else if (error.code === 'auth/invalid-email') {
+        throw new Error('Adresse email invalide');
+      } else if (error.code === 'auth/user-disabled') {
+        throw new Error('Ce compte a été désactivé');
+      }
+      
       throw error;
     }
   }
 
   async logout(): Promise<void> {
     try {
-      await AsyncStorage.removeItem('currentUser');
+      // 1. Déconnexion Firebase
+      await signOut(auth);
+
+      // 2. Nettoyer le stockage local
+      const currentUser = await AsyncStorage.getItem('currentUser');
+      if (currentUser) {
+        await AsyncStorage.removeItem('currentUser');
+        await AsyncStorage.removeItem(`user_${currentUser}`);
+      }
+
+      console.log('✅ User logged out successfully');
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('❌ Logout error:', error);
       throw error;
     }
   }
 
   async getCurrentUser(): Promise<User | null> {
     try {
-      const userId = await AsyncStorage.getItem('currentUser');
-      if (!userId) return null;
-      const user = await AsyncStorage.getItem(`user_${userId}`);
-      return user ? JSON.parse(user) : null;
+      // 1. Vérifier l'état Firebase Auth
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        return null;
+      }
+
+      // 2. Essayer de récupérer depuis le stockage local
+      const userId = firebaseUser.uid;
+      const storedUser = await AsyncStorage.getItem(`user_${userId}`);
+      
+      if (storedUser) {
+        return JSON.parse(storedUser);
+      }
+
+      // 3. Si pas en local, reconstruire depuis Firebase
+      const userData = await firebaseService.getUserById(userId);
+      
+      const user: User = {
+        id: userId,
+        email: firebaseUser.email || '',
+        name: firebaseUser.displayName || userData?.username || 'User',
+        hashedPassword: ''
+      };
+
+      // Sauvegarder en local pour les prochaines fois
+      await AsyncStorage.setItem('currentUser', userId);
+      await AsyncStorage.setItem(`user_${userId}`, JSON.stringify(user));
+
+      return user;
     } catch (error) {
-      console.error('Get current user error:', error);
+      console.error('❌ Error getting current user:', error);
       return null;
     }
   }
 
-  async updateProfile(userId: string, updates: Partial<User>): Promise<User> {
+  async isLoggedIn(): Promise<boolean> {
     try {
-      const user = await AsyncStorage.getItem(`user_${userId}`);
-      if (!user) throw new Error('User not found');
-      
-      const updatedUser = { ...JSON.parse(user), ...updates };
-      await AsyncStorage.setItem(`user_${userId}`, JSON.stringify(updatedUser));
-      return updatedUser;
+      const firebaseUser = auth.currentUser;
+      return firebaseUser !== null;
     } catch (error) {
-      console.error('Update profile error:', error);
+      console.error('❌ Error checking login status:', error);
+      return false;
+    }
+  }
+
+  // Listener pour les changements d'état d'authentification
+  onAuthStateChanged(callback: (user: User | null) => void) {
+    return onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Utilisateur connecté
+        try {
+          const userData = await firebaseService.getUserById(firebaseUser.uid);
+          const user: User = {
+            id: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            name: firebaseUser.displayName || userData?.username || 'User',
+            hashedPassword: ''
+          };
+          callback(user);
+        } catch (error) {
+          console.error('Error in auth state change:', error);
+          callback(null);
+        }
+      } else {
+        // Utilisateur déconnecté
+        callback(null);
+      }
+    });
+  }
+
+  // Réinitialisation de mot de passe
+  async resetPassword(email: string): Promise<void> {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      console.log('✅ Password reset email sent');
+    } catch (error: any) {
+      console.error('❌ Password reset error:', error);
+      
+      if (error.code === 'auth/user-not-found') {
+        throw new Error('Aucun compte trouvé avec cette adresse email');
+      } else if (error.code === 'auth/invalid-email') {
+        throw new Error('Adresse email invalide');
+      }
+      
       throw error;
     }
   }
 
-  async deleteAccount(userId: string): Promise<void> {
+  // Mise à jour du profil
+  async updateProfile(updates: { name?: string; email?: string }): Promise<void> {
     try {
-      await AsyncStorage.removeItem(`user_${userId}`);
-      await AsyncStorage.removeItem('currentUser');
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        throw new Error('No user logged in');
+      }
+
+      // Mettre à jour Firebase Auth
+      if (updates.name) {
+        await updateProfile(firebaseUser, {
+          displayName: updates.name
+        });
+      }
+
+      if (updates.email) {
+        await updateEmail(firebaseUser, updates.email);
+      }
+
+      // Mettre à jour Firestore
+      await firebaseService.updateUser(firebaseUser.uid, {
+        username: updates.name,
+        email: updates.email
+      });
+
+      // Mettre à jour le stockage local
+      const currentUser = await this.getCurrentUser();
+      if (currentUser) {
+        const updatedUser = {
+          ...currentUser,
+          name: updates.name || currentUser.name,
+          email: updates.email || currentUser.email
+        };
+        await AsyncStorage.setItem(`user_${firebaseUser.uid}`, JSON.stringify(updatedUser));
+      }
+
+      console.log('✅ Profile updated successfully');
     } catch (error) {
-      console.error('Delete account error:', error);
+      console.error('❌ Profile update error:', error);
       throw error;
     }
   }
 }
 
-export const authService = new AuthService(); 
+export const authService = new AuthService();
+export default authService; 

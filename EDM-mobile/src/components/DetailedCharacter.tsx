@@ -19,19 +19,7 @@ export default function DetailedCharacter({ character, size = 100 }: DetailedCha
       const options = mapCharacterToAvataaars(character);
       const seed = generateAvatarSeed(character);
 
-      console.log('✨ Generating AVATAAARS doll avatar with options:');
-      console.log('📋 Full options object:', JSON.stringify(options, null, 2));
-      console.log('🎯 Key mappings:');
-      console.log('  - clothing:', options.clothing);
-      console.log('  - clothesColor:', options.clothesColor);
-      console.log('  - clothingGraphic:', options.clothingGraphic);
-      console.log('  - top (hair/hat):', options.top);
-      console.log('  - hatColor:', options.hatColor);
-      console.log('  - accessories:', options.accessories);
-      console.log('  - accessoriesColor:', options.accessoriesColor);
-      console.log('  - accessoriesProbability:', options.accessoriesProbability);
-      console.log('  - mouth:', options.mouth);
-      console.log('🔍 INPUT CHARACTER accessories:', character.accessories, character.accessory);
+      // Generate avatar with options
 
       const avatar = createAvatar(avataaars, {
         seed,
@@ -44,10 +32,7 @@ export default function DetailedCharacter({ character, size = 100 }: DetailedCha
         translateX: 0, // Perfect centering
       });
 
-      const svgString = avatar.toString();
-      console.log('💕 AVATAAARS doll generated successfully, SVG length:', svgString.length); // Debug log
-
-      return svgString;
+      return avatar.toString();
     } catch (error) {
       console.error('❌ Error generating AVATAAARS doll avatar:', error);
 

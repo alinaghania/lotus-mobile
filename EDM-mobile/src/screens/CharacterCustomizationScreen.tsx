@@ -136,8 +136,6 @@ export default function CharacterCustomizationScreen() {
   useEffect(() => {
     const loadCharacter = async () => {
       const savedCharacter = await loadSavedCharacter();
-      console.log('🎯 Loaded character for customization:', savedCharacter);
-      console.log('🎯 Number of customization steps:', customizationSteps.length);
       setCharacter(savedCharacter);
     };
     

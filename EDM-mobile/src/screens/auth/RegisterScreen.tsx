@@ -4,9 +4,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import { NavigationProp } from '@react-navigation/native';
 import { profileService } from '../../services/profileService';
+import { firebaseService } from '../../services/firebaseService';
 import MultiSelect from '../../components/MultiSelect';
 import { endometriosisTypes, commonConditions } from '../../constants/healthOptions';
 import { Ionicons } from '@expo/vector-icons';
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 interface RegisterScreenProps {
   navigation: NavigationProp<any>;
@@ -94,6 +97,47 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
     try {
       setError('');
       const user = await register({ email, password, name });
+      
+      // Créer un profil COMPLET avec TOUTES les données pour analytics
+      const completeUserData = {
+        userId: user.id,
+        email: email.trim(),
+        username: name.trim(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        
+        registrationData: {
+          age: age || undefined,
+          sex: sex || undefined,
+          weight: weight || undefined,
+          hasEndometriosis: hasEndo,
+          endometriosisTypes: endoType,
+          isMenopause: menopause,
+          medicalConditions: conditions,
+          deviceInfo: {
+            platform: Platform.OS,
+            version: Constants.expoConfig?.version || '1.0.0'
+          },
+          preferences: {
+            notifications: true,
+            dataSharing: true,
+            language: 'en'
+          }
+        },
+        
+        metadata: {
+          lastLoginDate: new Date(),
+          accountCreatedDate: new Date(),
+          profileCompleteness: calculateProfileCompleteness(),
+          appVersion: Constants.expoConfig?.version || '1.0.0',
+          platform: Platform.OS
+        }
+      };
+      
+      // Sauvegarder TOUTES les données dans Firebase
+      await firebaseService.createUser(completeUserData);
+      
+      // Créer le profil legacy (pour compatibilité)
       await profileService.upsertProfile(user.id, {
         age: age ? parseInt(age) : undefined,
         sex,
@@ -106,10 +150,25 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
         updatedAt: new Date().toISOString(),
         userId: user.id,
       });
+      
       navigation.navigate('Main');
     } catch (err: any) {
       setError(err?.message || 'Failed to create account');
     }
+  };
+  
+  // Calculer la complétude du profil pour analytics
+  const calculateProfileCompleteness = (): number => {
+    let completeness = 50; // Base pour email + nom
+    
+    if (age) completeness += 10;
+    if (sex) completeness += 10;
+    if (weight) completeness += 10;
+    if (hasEndo && hasEndo !== 'no') completeness += 10;
+    if (endoType.length > 0) completeness += 5;
+    if (conditions.length > 0) completeness += 5;
+    
+    return Math.min(100, completeness);
   };
 
   const StepDots = () => (

@@ -301,15 +301,12 @@ export const mapCharacterToAvataaars = (character: Character) => {
     return colorMap[accessoryColor] || '262e33'; // Default to dark navy
   };
 
-  // Map accessories to exact AVATAAARS values (DEBUG prescription01!)
+  // Map accessories to exact AVATAAARS values
   const mapAccessories = (character: Character): string[] => {
-    console.log('🔍 DEBUG accessories input:', character.accessories, character.accessory);
-    
     // Use the newer 'accessories' field, fallback to old 'accessory'
     const accessoryValue = (character as any).accessories || character.accessory || 'none';
     
     if (accessoryValue === 'none') {
-      console.log('🔍 DEBUG accessories result: none → []');
       return []; // No accessories
     }
     
@@ -329,11 +326,7 @@ export const mapCharacterToAvataaars = (character: Character) => {
     };
     
     const mappedAccessory = accessoryMap[accessoryValue] || accessoryValue;
-    const result = mappedAccessory ? [mappedAccessory] : [];
-    
-    console.log('🔍 DEBUG accessories mapping:', accessoryValue, '→', mappedAccessory, '→', result);
-    
-    return result;
+    return mappedAccessory ? [mappedAccessory] : [];
   };
 
   // Map mouth to cute expressions (NEW!)
