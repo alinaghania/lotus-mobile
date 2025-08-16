@@ -82,31 +82,52 @@ export const convertToFirebaseFormat = (data: DailyRecord, userId: string): Omit
 };
 
 export const convertFromFirebaseFormat = (doc: TrackingDocument): DailyRecord => {
-  return {
-    date: doc.date,
-    
-    // Convertir vers l'ancien format sleep
-    sleep: doc.sleep ? {
+  const result: DailyRecord = {
+    date: doc.date
+  };
+  
+  // Convertir vers l'ancien format sleep SI présent
+  if (doc.sleep) {
+    result.sleep = {
       bedTime: doc.sleep.bedtime || '',
       wakeTime: doc.sleep.wakeTime || '',
       sleepDuration: doc.sleep.duration || 0,
       sleepQuality: doc.sleep.quality || 0
-    } : undefined,
-    
-    // Convertir vers l'ancien format meals
-    meals: doc.meals ? {
-      morning: doc.meals.breakfast?.items || [],
-      afternoon: doc.meals.lunch?.items || [],
-      evening: doc.meals.dinner?.items || []
-    } : undefined,
-    
-    // Convertir vers l'ancien format digestive
-    digestive: doc.digestive ? {
+    };
+  }
+  
+  // Convertir vers l'ancien format meals SI présent
+  if (doc.meals) {
+    result.meals = {
+      morning: (doc.meals.breakfast?.items || []).join(','),
+      afternoon: (doc.meals.lunch?.items || []).join(','),
+      evening: (doc.meals.dinner?.items || []).join(',')
+    };
+  }
+  
+  // Convertir vers l'ancien format digestive SI présent
+  if (doc.digestive) {
+    result.digestive = {
       photos: {
         morning: doc.digestive.morning?.photos || [],
         evening: doc.digestive.evening?.photos || []
       },
       notes: doc.digestive.morning?.notes || doc.digestive.evening?.notes || ''
-    } : undefined
-  };
+    };
+  }
+  
+  // Convertir sport vers ancien format activity SI présent
+  if (doc.sport) {
+    (result as any).activity = (doc.sport.activities as string[]) || [];
+    (result as any).activityMinutes = doc.sport.totalDuration || 0;
+  }
+  
+  // Ajouter toutes les autres données présentes dans Firebase
+  if (doc.mood !== undefined) (result as any).mood = doc.mood;
+  if (doc.energy !== undefined) (result as any).energy = doc.energy;
+  if (doc.stress !== undefined) (result as any).stress = doc.stress;
+  if (doc.symptoms && doc.symptoms.length > 0) (result as any).symptoms = doc.symptoms.join(',');
+  if (doc.notes) (result as any).notes = doc.notes;
+  
+  return result;
 }; 
